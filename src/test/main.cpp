@@ -58,7 +58,7 @@ void testEither()
     // left identity
     // (return x) >>= f is equivalent to f x
     string s = "OK";
-    auto x = either::mreturn<int, string>(s) >>= MaybeAppendGo;
+    auto x = either::mreturn<int, string>(s) >= MaybeAppendGo;
     auto y = MaybeAppendGo(s);
     assert(x == y);
   }
@@ -67,7 +67,7 @@ void testEither()
     // right identity
     // m >>= return is equivalent to m
     auto m = either::mreturn<int, string>("OK");
-    auto x = m >>= either::mreturn<decltype(m)::L, decltype(m)::R>;
+    auto x = m >= either::mreturn<decltype(m)::L, decltype(m)::R>;
     assert(m == x);
   }
 
@@ -75,15 +75,15 @@ void testEither()
     // associativity
     // (m >>= f) >>= g is equivalent to m >>= (\x -> f x >>= g)
     auto m = either::mreturn<int, string>("OK");
-    auto x = (m >>= MaybeAppendGo) >>= MaybeAppendGo;
-    auto y = m >>= [] (const string& s) { return MaybeAppendGo(s) >>= MaybeAppendGo; };
+    auto x = (m >= MaybeAppendGo) >= MaybeAppendGo;
+    auto y = m >= [] (const string& s) { return MaybeAppendGo(s) >= MaybeAppendGo; };
     assert(x == y);
   }
 
   {
     // test of >>
     auto m = either::mreturn<int, string>("OK");
-    auto x = (m >>= MaybeAppendGo) >> [] ()
+    auto x = (m >= MaybeAppendGo) >> [] ()
       { return decltype(m)("OK"); };
     //{ return either::mreturn<decltype(m)::L, decltype(m)::R>("OK"); };
     assert(m == x);
@@ -141,7 +141,7 @@ void testIdentity()
     // left identity
     // (return x) >>= f is equivalent to f x
     int n = 1;
-    auto x = identity::mreturn<int>(n) >>= MaybeAdd1;
+    auto x = identity::mreturn<int>(n) >= MaybeAdd1;
     auto y = MaybeAdd1(n);
     assert(x == y);
   }
@@ -150,7 +150,7 @@ void testIdentity()
     // right identity
     // m >>= return is equivalent to m
     auto m = identity::mreturn<int>(1);
-    auto x = m >>= identity::mreturn<decltype(m)::I>;
+    auto x = m >= identity::mreturn<decltype(m)::I>;
     assert(m == x);
   }
 
@@ -158,19 +158,20 @@ void testIdentity()
     // associativity
     // (m >>= f) >>= g is equivalent to m >>= (\x -> f x >>= g)
     auto m = identity::mreturn<int>(1);
-    auto x = (m >>= MaybeAdd1) >>= MaybeAdd1;
-    auto y = m >>= [] (int i) { return MaybeAdd1(i) >>= MaybeAdd1; };
+    auto x = (m >= MaybeAdd1) >= MaybeAdd1;
+    auto y = m >= [] (int i) { return MaybeAdd1(i) >= MaybeAdd1; };
     assert(x == y);
   }
 
   {
     // test of >>
     auto m = identity::mreturn<int>(1);
-    auto x = (m >>= MaybeAdd1) >> [] ()
+    auto x = (m >= MaybeAdd1) >> [] ()
       { return decltype(m)(1); };
       //{ return identity::mreturn<decltype(m)::I>(1); };
     assert(m == x);
   }
+
 }
 
 //------------------------------------------------------------------------------

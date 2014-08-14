@@ -77,8 +77,11 @@ namespace identity
 //------------------------------------------------------------------------------
 // sugar operators
 
+// unfortunately in c++, >>= is right associative, so in order to chain binds
+// without parens, we need an alternative operator
+
 template <typename F>
-typename function_traits<F>::returnType operator>>=(
+typename function_traits<F>::returnType operator>=(
     const Identity<typename function_traits<F>::template Arg<0>::bareType>& i,
     const F& f)
 {
