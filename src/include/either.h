@@ -4,10 +4,6 @@
 #include <ostream>
 
 //------------------------------------------------------------------------------
-// The identity monad
-
-//------------------------------------------------------------------------------
-// simple identity type
 // The either monad
 
 template <typename Left, typename Right>
@@ -164,7 +160,7 @@ typename function_traits<F>::returnType operator>=(
 }
 
 template <typename A, typename B, typename F>
-typename function_traits<F>::returnType operator>>(
+typename function_traits<F>::returnType operator>(
     const Either<A,B>&, const F& f)
 {
   return f();

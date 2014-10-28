@@ -1,8 +1,10 @@
+#include <async.h>
 #include <either.h>
 #include <identity.h>
 
 #include <cassert>
 #include <iostream>
+#include <string>
 using namespace std;
 
 //------------------------------------------------------------------------------
@@ -83,7 +85,7 @@ void testEither()
   {
     // test of >>
     auto m = either::mreturn<int, string>("OK");
-    auto x = (m >= MaybeAppendGo) >> [] ()
+    auto x = (m >= MaybeAppendGo) > [] ()
       { return decltype(m)("OK"); };
     //{ return either::mreturn<decltype(m)::L, decltype(m)::R>("OK"); };
     assert(m == x);
@@ -166,10 +168,98 @@ void testIdentity()
   {
     // test of >>
     auto m = identity::mreturn<int>(1);
-    auto x = (m >= MaybeAdd1) >> [] ()
+    auto x = (m >= MaybeAdd1) > [] ()
       { return decltype(m)(1); };
       //{ return identity::mreturn<decltype(m)::I>(1); };
     assert(m == x);
+  }
+
+  {
+    // test precedence/associativity
+    auto m = identity::mreturn<int>(1);
+    auto x = m >= MaybeAdd1 > [] ()
+      { return decltype(m)(1); };
+    assert(m == x);
+  }
+
+}
+
+//------------------------------------------------------------------------------
+string ToString(int i)
+{
+  return to_string(i);
+}
+
+char FirstChar(string s)
+{
+  return s[0];
+}
+
+Async<string> AsyncToString(int i)
+{
+  return [i] (std::function<void (string)> f) { f(to_string(i)); };
+}
+
+Async<char> AsyncFirstChar(string s)
+{
+  return [s] (std::function<void (char)> f) { f(s[0]); };
+}
+
+Async<char> AsyncChar()
+{
+  return [] (std::function<void (char)> f) { f('A'); };
+}
+
+//------------------------------------------------------------------------------
+void testAsync()
+{
+  {
+    Async<int> x = async::pure(100);
+    x([] (int i) { cout << i << endl; });
+  }
+
+  {
+    Async<int> x = async::pure(90);
+    Async<char> y = async::fmap(FirstChar, async::fmap(ToString, x));
+    y([] (char c) { cout << c << endl; });
+  }
+
+  {
+    Async<int> x = async::pure(80);
+    Async<string> y = async::apply(async::pure(ToString), x);
+    y([] (string s) { cout << s << endl; });
+  }
+
+  {
+    Async<string> x = AsyncToString(70);
+    Async<char> y = async::bind(x, AsyncFirstChar);
+    y([] (char c) { cout << c << endl; });
+  }
+
+  {
+    (async::pure(60)
+     >= AsyncToString
+     >= AsyncFirstChar)([] (char c) { cout << c << endl; });
+  }
+
+  {
+    (async::pure(50)
+     >= AsyncToString
+     > AsyncChar)([] (char c) { cout << c << endl; });
+  }
+
+  {
+    (async::pure(40) && async::pure("foo"))
+      ([] (std::pair<int, string> p) { cout << p.first << "," << p.second << endl; });
+  }
+
+  {
+    (async::pure(40) || async::pure("foo"))
+      ([] (Either<int, const char*> e) { cout << e << endl; });
+    (async::zero() || async::pure("foo"))
+      ([] (Either<int, const char*> e) { cout << e << endl; });
+    (async::pure(40) || async::zero())
+      ([] (Either<int, int> e) { cout << e << endl; });
   }
 
 }
@@ -177,6 +267,7 @@ void testIdentity()
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
+  testAsync();
   testEither();
   testIdentity();
   cout << "All done." << endl;

@@ -12,6 +12,9 @@ template <typename R, typename... A>
 struct function_traits<R(A...)>
 {
   typedef R returnType;
+  typedef R functionType(A...);
+
+  enum { arity = sizeof...(A) };
 
   template <size_t n>
   struct Arg

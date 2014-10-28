@@ -89,7 +89,7 @@ typename function_traits<F>::returnType operator>=(
 }
 
 template <typename F, typename T>
-typename function_traits<F>::returnType operator>>(
+typename function_traits<F>::returnType operator>(
     const Identity<T>&, const F& f)
 {
   return f();
