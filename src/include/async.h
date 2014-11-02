@@ -59,11 +59,11 @@ namespace async
     {
       struct Data
       {
-        std::shared_ptr<F> pf;
-        std::shared_ptr<A> pa;
+        std::unique_ptr<F> pf;
+        std::unique_ptr<A> pa;
         std::mutex m;
       };
-      Data* pData = new Data;
+      std::shared_ptr<Data> pData = std::make_shared<Data>();
 
       af([=] (F f) {
           bool have_a = false;
@@ -72,14 +72,11 @@ namespace async
             std::lock_guard<std::mutex> g(pData->m);
             have_a = static_cast<bool>(pData->pa);
             if (!have_a)
-              pData->pf = std::make_shared<F>(f);
+              pData->pf = std::make_unique<F>(std::move(f));
           }
           // if we have both sides, call the continuation and we're done
           if (have_a)
-          {
             cont(f(*pData->pa));
-            delete pData;
-          }
         });
 
       aa([=] (A a) {
@@ -89,14 +86,11 @@ namespace async
             std::lock_guard<std::mutex> g(pData->m);
             have_f = static_cast<bool>(pData->pf);
             if (!have_f)
-              pData->pa = std::make_shared<A>(a);
+              pData->pa = std::make_unique<A>(std::move(a));
           }
           // if we have both sides, call the continuation and we're done
           if (have_f)
-          {
             cont((*pData->pf)(a));
-            delete pData;
-          }
         });
     };
   }
@@ -121,11 +115,11 @@ namespace async
     {
       struct Data
       {
-        std::shared_ptr<A> pa;
-        std::shared_ptr<B> pb;
+        std::unique_ptr<A> pa;
+        std::unique_ptr<B> pb;
         std::mutex m;
       };
-      Data* pData = new Data;
+      std::shared_ptr<Data> pData = std::make_shared<Data>();
 
       aa([=] (A a) {
           bool have_b = false;
@@ -134,14 +128,11 @@ namespace async
             std::lock_guard<std::mutex> g(pData->m);
             have_b = static_cast<bool>(pData->pb);
             if (!have_b)
-              pData->pa = std::make_shared<A>(a);
+              pData->pa = std::make_unique<A>(std::move(a));
           }
           // if we have both sides, call the continuation and we're done
           if (have_b)
-          {
             cont(std::make_pair(a, *pData->pb));
-            delete pData;
-          }
         });
 
       ab([=] (B b) {
@@ -151,14 +142,11 @@ namespace async
             std::lock_guard<std::mutex> g(pData->m);
             have_a = static_cast<bool>(pData->pa);
             if (!have_a)
-              pData->pb = std::make_shared<B>(b);
+              pData->pb = std::make_unique<B>(std::move(b));
           }
           // if we have both sides, call the continuation and we're done
           if (have_a)
-          {
             cont(std::make_pair(*pData->pa, b));
-            delete pData;
-          }
         });
     };
   }

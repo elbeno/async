@@ -13,7 +13,7 @@ env = Environment(BUILDTYPE = buildType,
                   CPPPATH = [include],
                   LIBPATH = [lib])
 
-env.Append(CCFLAGS = "-g -std=c++11")
+env.Append(CCFLAGS = "-g -std=c++1y")
 env.Append(CCFLAGS = "-stdlib=libc++")
 env.Append(LINKFLAGS = "-lc++")
 env.Replace(CXX = 'clang++')
