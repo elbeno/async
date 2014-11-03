@@ -107,6 +107,18 @@ namespace async
     };
   }
 
+  template <typename F,
+            typename A = typename function_traits<F>::template Arg<0>::bareType,
+            typename AB = typename function_traits<F>::returnType>
+  inline AB sequence(Async<A> aa, F f)
+  {
+    using C = typename function_traits<AB>::template Arg<0>::bareType;
+    return [=] (C cont)
+    {
+      aa([=] (A) { f()(cont); });
+    };
+  }
+
   // The technique for ANDing together two Asyncs is similar to apply.
   template <typename A, typename B>
   inline Async<std::pair<A,B>> logical_and(Async<A> aa, Async<B> ab)
@@ -172,7 +184,7 @@ namespace async
         bool done;
         std::mutex m;
       };
-      Data* pData = new Data;
+      std::shared_ptr<Data> pData = std::make_shared<Data>();
 
       aa([=] (A a) {
           bool done = false;
@@ -182,13 +194,7 @@ namespace async
             pData->done = true;
           }
           if (!done)
-          {
             cont(Either<A,B>(a, true));
-          }
-          else
-          {
-            delete pData;
-          }
         });
 
       ab([=] (B b) {
@@ -199,13 +205,7 @@ namespace async
             pData->done = true;
           }
           if (!done)
-          {
             cont(Either<A,B>(b));
-          }
-          else
-          {
-            delete pData;
-          }
         });
     };
   }
@@ -222,11 +222,12 @@ inline AB operator>=(Async<A>&& a, F f)
   return async::bind(std::forward<Async<A>>(a), f);
 }
 
-template <typename F, typename T,
+template <typename F,
+          typename A,
           typename AB = typename function_traits<F>::returnType>
-inline AB operator>(Async<T>, F f)
+inline AB operator>(Async<A>&& a, F f)
 {
-  return f();
+  return async::sequence(std::forward<Async<A>>(a), f);
 }
 
 template <typename A, typename B>
