@@ -67,8 +67,9 @@ namespace async
   // (a -> b) -> m a -> m b
   template <typename F,
             typename A = typename function_traits<F>::template Arg<0>::bareType,
+            typename AA = Async<A>,
             typename B = typename function_traits<F>::returnType>
-  inline Async<B> fmap(F f, Async<A> aa)
+  inline Async<B> fmap(F f, AA&& aa)
   {
     return [=] (typename Continuation<B>::type cont)
     {
@@ -84,9 +85,10 @@ namespace async
   template <typename AF,
             typename A = typename function_traits<
               typename FromAsync<AF>::type>::template Arg<0>::bareType,
+            typename AA = Async<A>,
             typename B = typename function_traits<
               typename FromAsync<AF>::type>::returnType>
-  inline Async<B> apply(AF af, Async<A> aa)
+  inline Async<B> apply(AF&& af, AA&& aa)
   {
     using F = typename FromAsync<AF>::type;
 
@@ -137,8 +139,9 @@ namespace async
   // m a -> (a -> m b) - > m b
   template <typename F,
             typename A = typename function_traits<F>::template Arg<0>::bareType,
+            typename AA = Async<A>,
             typename AB = typename function_traits<F>::returnType>
-  inline AB bind(Async<A> aa, F f)
+  inline AB bind(AA&& aa, F f)
   {
     using C = typename function_traits<AB>::template Arg<0>::bareType;
     return [=] (C cont)
