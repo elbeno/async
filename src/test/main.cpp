@@ -210,42 +210,79 @@ Async<char> AsyncChar()
   return [] (std::function<void (char)> f) { f('A'); };
 }
 
+Async<void> AsyncVoid()
+{
+  return [] (std::function<void ()> f) { f(); };
+}
+
+Async<void> AsyncIntToVoid(int)
+{
+  return [] (std::function<void ()> f) { f(); };
+}
+
 //------------------------------------------------------------------------------
 void testAsync()
 {
+  // pure
   {
     Async<int> x = async::pure(100);
     x([] (int i) { cout << i << endl; });
   }
 
+  // fmap
   {
     Async<int> x = async::pure(90);
     Async<char> y = async::fmap(FirstChar, async::fmap(ToString, x));
     y([] (char c) { cout << c << endl; });
   }
 
+  // apply
   {
     Async<int> x = async::pure(80);
     Async<string> y = async::apply(async::pure(ToString), x);
     y([] (string s) { cout << s << endl; });
   }
 
+  // bind
   {
     Async<string> x = AsyncToString(70);
     Async<char> y = async::bind(x, AsyncFirstChar);
     y([] (char c) { cout << c << endl; });
   }
 
+  // multiple bind
   {
     (async::pure(60)
      >= AsyncToString
      >= AsyncFirstChar)([] (char c) { cout << c << endl; });
   }
 
+  // sequence (Async<non-void> > non-void(void))
   {
     (async::pure(50)
      >= AsyncToString
      > AsyncChar)([] (char c) { cout << c << endl; });
+  }
+
+  // sequence (Async<non-void> > void(void))
+  {
+    (async::pure(50)
+     >= AsyncToString
+     > AsyncVoid)([] () { cout << "async void" << endl; });
+  }
+
+  // sequence (Async<void> > non-void(void))
+  {
+    (async::pure(50)
+     >= AsyncIntToVoid
+     > AsyncChar)([] (char c) { cout << c << endl; });
+  }
+
+  // sequence (Async<void> > void(void))
+  {
+    (async::pure(50)
+     >= AsyncIntToVoid
+     > AsyncVoid)([] () { cout << "async void 2" << endl; });
   }
 
   {
@@ -254,12 +291,12 @@ void testAsync()
   }
 
   {
-    (async::pure(40) || async::pure("foo"))
+    (async::pure(30) || async::pure("foo"))
       ([] (Either<int, const char*> e) { cout << e << endl; });
     (async::zero() || async::pure("foo"))
-      ([] (Either<int, const char*> e) { cout << e << endl; });
-    (async::pure(40) || async::zero())
-      ([] (Either<int, int> e) { cout << e << endl; });
+      ([] (Either<async::Void, const char*> e) { cout << e << endl; });
+    (async::pure(20) || async::zero())
+      ([] (Either<int, async::Void> e) { cout << e << endl; });
   }
 
 }
