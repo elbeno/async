@@ -67,9 +67,8 @@ namespace async
   // (a -> b) -> m a -> m b
   template <typename F,
             typename A = typename function_traits<F>::template Arg<0>::bareType,
-            typename AA = Async<A>,
             typename B = typename function_traits<F>::returnType>
-  inline Async<B> fmap(F f, AA&& aa)
+  inline Async<B> fmap(F f, Async<A> aa)
   {
     return [=] (typename Continuation<B>::type cont)
     {
@@ -85,23 +84,22 @@ namespace async
   template <typename AF,
             typename A = typename function_traits<
               typename FromAsync<AF>::type>::template Arg<0>::bareType,
-            typename AA = Async<A>,
             typename B = typename function_traits<
               typename FromAsync<AF>::type>::returnType>
-  inline Async<B> apply(AF&& af, AA&& aa)
+  inline Async<B> apply(AF af, Async<A> aa)
   {
     using F = typename FromAsync<AF>::type;
 
+    struct Data
+    {
+      std::unique_ptr<F> pf;
+      std::unique_ptr<A> pa;
+      std::mutex m;
+    };
+    std::shared_ptr<Data> pData = std::make_shared<Data>();
+
     return [=] (typename Continuation<B>::type cont)
     {
-      struct Data
-      {
-        std::unique_ptr<F> pf;
-        std::unique_ptr<A> pa;
-        std::mutex m;
-      };
-      std::shared_ptr<Data> pData = std::make_shared<Data>();
-
       af([=] (F f) {
           bool have_a = false;
           {
@@ -139,9 +137,8 @@ namespace async
   // m a -> (a -> m b) - > m b
   template <typename F,
             typename A = typename function_traits<F>::template Arg<0>::bareType,
-            typename AA = Async<A>,
             typename AB = typename function_traits<F>::returnType>
-  inline AB bind(AA&& aa, F f)
+  inline AB bind(Async<A> aa, F f)
   {
     using C = typename function_traits<AB>::template Arg<0>::bareType;
     return [=] (C cont)
@@ -157,7 +154,7 @@ namespace async
   struct sequence
   {
     using AB = typename function_traits<F>::returnType;
-    inline AB operator()(AA&& aa, F f)
+    inline AB operator()(AA aa, F f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
       return [=] (C cont)
@@ -171,7 +168,7 @@ namespace async
   struct sequence<F, AA, void>
   {
     using AB = typename function_traits<F>::returnType;
-    inline AB operator()(AA&& aa, F f)
+    inline AB operator()(AA aa, F f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
       return [=] (C cont)
@@ -194,7 +191,7 @@ namespace async
   template <typename AA, typename AB,
             typename A = typename FromAsync<AA>::type,
             typename B = typename FromAsync<AB>::type>
-  inline Async<std::pair<A,B>> concurrently(AA&& aa, AB&& ab)
+  inline Async<std::pair<A,B>> concurrently(AA aa, AB ab)
   {
     struct Data
     {
@@ -250,7 +247,7 @@ namespace async
   template <typename AA, typename AB,
             typename A = typename FromAsync<AA>::type,
             typename B = typename FromAsync<AB>::type>
-  inline Async<Either<A,B>> race(AA&& aa, AB&& ab)
+  inline Async<Either<A,B>> race(AA aa, AB ab)
   {
     struct Data
     {
