@@ -9,7 +9,6 @@
 #include <ostream>
 #include <utility>
 
-
 //------------------------------------------------------------------------------
 // The async monad
 
@@ -41,6 +40,11 @@ namespace async
   };
 
   template <typename T>
+  struct FromAsync<T&> : public FromAsync<T>
+  {
+  };
+
+  template <typename T>
   struct FromAsync<std::function<void (std::function<void (T)>)>>
   {
     using type = T;
@@ -65,15 +69,49 @@ namespace async
   // async a continuation that calls the new continuation with the result of
   // calling the function.
   // (a -> b) -> m a -> m b
-  template <typename F,
-            typename A = typename function_traits<F>::template Arg<0>::bareType,
-            typename B = typename function_traits<F>::returnType>
-  inline Async<B> fmap(F f, Async<A> aa)
+
+  // In the general case, partially apply the function
+  template <typename F, typename AA, size_t N>
+  struct fmap_helper
   {
-    return [=] (typename Continuation<B>::type cont)
+    using A = typename FromAsync<AA>::type;
+    using B = typename function_traits<F>::boundType;
+
+    inline Async<B> operator()(F&& f, AA&& aa)
     {
-      aa([=] (A a) { cont(f(a)); });
-    };
+      return [=] (typename Continuation<B>::type cont)
+      {
+        aa([=] (A a) { cont(function_traits<F>::bind1st(f, a)); });
+      };
+    }
+  };
+
+  // If there is only one argument, call the function as normal
+  template <typename F, typename AA>
+  struct fmap_helper<F, AA, 1>
+  {
+    using A = typename FromAsync<AA>::type;
+    using B = typename function_traits<F>::boundType;
+
+    inline Async<B> operator()(F&& f, AA&& aa)
+    {
+      return [=] (typename Continuation<B>::type cont)
+      {
+        aa([=] (A a) { cont(f(a)); });
+      };
+    }
+  };
+
+  template <typename F,
+            typename AA = typename Async<
+              typename function_traits<F>::template Arg<0>::bareType>
+            ::type>
+  inline Async<typename function_traits<F>::boundType> fmap(
+      F&& f, AA&& aa)
+  {
+    return fmap_helper<F, AA, function_traits<F>::arity>()(
+        std::forward<F>(f),
+        std::forward<AA>(aa));
   }
 
   // Apply an async function to an async argument: this is more involved. We
@@ -298,9 +336,10 @@ inline AB operator>=(Async<A>&& a, F f)
 template <typename F, typename AA,
           typename A = typename async::FromAsync<AA>::type,
           typename AB = typename function_traits<F>::returnType>
-inline AB operator>(AA&& a, F f)
+inline AB operator>(AA&& a, F&& f)
 {
-  return async::sequence<F,AA,A>()(std::forward<AA>(a), f);
+  return async::sequence<F,AA,A>()(std::forward<AA>(a),
+                                   std::forward<F>(f));
 }
 
 template <typename AA, typename AB,

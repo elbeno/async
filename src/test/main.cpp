@@ -220,6 +220,11 @@ Async<void> AsyncIntToVoid(int)
   return [] (std::function<void ()> f) { f(); };
 }
 
+int add(int x, int y)
+{
+  return x + y;
+}
+
 //------------------------------------------------------------------------------
 void testAsync()
 {
@@ -241,6 +246,14 @@ void testAsync()
     Async<int> x = async::pure(80);
     Async<string> y = async::apply(async::pure(ToString), x);
     y([] (string s) { cout << s << endl; });
+  }
+
+  // fmap + apply (partial application)
+  {
+    Async<int> x = async::pure(90);
+    auto y = async::fmap(add, x);
+    auto z = async::apply(y, x);
+    z([] (int i) { cout << i << endl; });
   }
 
   // bind
