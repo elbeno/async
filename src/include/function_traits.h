@@ -27,8 +27,12 @@ struct function_traits<R(A...)>
     using bareType = typename std::decay<type>::type;
   };
 
-  // To simplify partial application
-  using boundType = R;
+  // Application calls the function
+  using appliedType = R;
+  static inline appliedType apply(functionType f, A... args)
+  {
+    return f(args...);
+  }
 };
 
 // Specialization for 2+ argument functions, to enable partial application
@@ -47,9 +51,9 @@ struct function_traits<R(A1, A2, A...)>
     using bareType = typename std::decay<type>::type;
   };
 
-  // Partial application: bind the first argument
-  using boundType = std::function<R(A2, A...)>;
-  static boundType bind1st(functionType f, A1 a1)
+  // (Partial) Application binds the first argument
+  using appliedType = std::function<R(A2, A...)>;
+  static inline appliedType apply(functionType f, A1 a1)
   {
     return [=] (A2 a2, A... args) -> R { return f(a1, a2, args...); };
   }
