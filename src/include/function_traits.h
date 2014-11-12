@@ -15,7 +15,7 @@ struct function_traits
 template <typename R, typename... A>
 struct function_traits<R(A...)>
 {
-  using functionType = R(A...);
+  using functionType = std::function<R(A...)>;
   using returnType = R;
 
   static const size_t arity = sizeof...(A);
@@ -39,7 +39,7 @@ struct function_traits<R(A...)>
 template <typename R, typename A1, typename A2, typename... A>
 struct function_traits<R(A1, A2, A...)>
 {
-  using functionType = R(A1, A2, A...);
+  using functionType = std::function<R(A1, A2, A...)>;
   using returnType = R;
 
   static const size_t arity = 2 + sizeof...(A);
@@ -70,9 +70,14 @@ struct function_traits<R(C::*)(A...) const>
   : public function_traits<R(A...)>
 {};
 
-// Remove const pointers and references
+// Remove const, volatile, pointers and references
 template <typename T>
 struct function_traits<const T>
+  : public function_traits<T>
+{};
+
+template <typename T>
+struct function_traits<volatile T>
   : public function_traits<T>
 {};
 

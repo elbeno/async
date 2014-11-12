@@ -256,6 +256,15 @@ void testAsync()
     z([] (int i) { cout << i << endl; });
   }
 
+  // apply (partial application)
+  {
+    auto x = async::pure(90);
+    auto f = async::pure(add);
+    auto y = async::apply(f, x);
+    auto z = async::apply(y, x);
+    z([] (int i) { cout << i << endl; });
+  }
+
   // bind
   {
     Async<string> x = AsyncToString(70);
