@@ -225,6 +225,11 @@ int add(int x, int y)
   return x + y;
 }
 
+int add2(int x, int y, int z)
+{
+  return x + y + z;
+}
+
 //------------------------------------------------------------------------------
 void testAsync()
 {
@@ -262,6 +267,12 @@ void testAsync()
     auto f = async::pure(add);
     auto y = async::apply(f, x);
     auto z = async::apply(y, x);
+    z([] (int i) { cout << i << endl; });
+  }
+  {
+    auto x = async::fmap(add2, async::pure(90));
+    auto y = async::apply(x, async::pure(90));
+    auto z = async::apply(y, async::pure(90));
     z([] (int i) { cout << i << endl; });
   }
 
