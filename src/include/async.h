@@ -40,6 +40,11 @@ namespace async
   };
 
   template <typename T>
+  struct FromAsync<T&> : public FromAsync<T>
+  {
+  };
+
+  template <typename T>
   struct FromAsync<std::function<void (std::function<void (T)>)>>
   {
     using type = T;
@@ -71,12 +76,12 @@ namespace async
   inline Async<typename function_traits<F>::appliedType> fmap(
       F&& f, AA&& aa)
   {
-    using A = typename FromAsync<typename std::remove_reference<AA>::type>::type;
+    using A = typename function_traits<F>::template Arg<0>::bareType;
     using B = typename function_traits<F>::appliedType;
 
     return [=] (typename Continuation<B>::type cont)
     {
-      aa([=] (A a) { cont(function_traits<F>::apply(f, a)); });
+      aa([=] (A a) { cont(function_traits<F>::apply(f, std::move(a))); });
     };
   }
 
@@ -96,7 +101,7 @@ namespace async
             ::appliedType>
   inline Async<B> apply(AF af, AA&& aa)
   {
-    using A = typename FromAsync<typename std::remove_reference<AA>::type>::type;
+    using A = typename FromAsync<AA>::type;
     using F = typename FromAsync<AF>::type;
 
     struct Data
@@ -120,7 +125,7 @@ namespace async
           }
           // if we have both sides, call the continuation and we're done
           if (have_a)
-            cont(function_traits<F>::apply(f, *pData->pa));
+            cont(function_traits<F>::apply(f, std::move(*pData->pa)));
         });
 
       aa([=] (A a) {
@@ -134,7 +139,7 @@ namespace async
           }
           // if we have both sides, call the continuation and we're done
           if (have_f)
-            cont(function_traits<F>::apply(*pData->pf, a));
+            cont(function_traits<F>::apply(*pData->pf, std::move(a)));
         });
     };
   }
@@ -151,7 +156,7 @@ namespace async
             typename AB = typename function_traits<F>::returnType>
   inline AB bind(AA&& aa, F&& f)
   {
-    using A = typename FromAsync<typename std::remove_reference<AA>::type>::type;
+    using A = typename function_traits<F>::template Arg<0>::bareType;
     using C = typename function_traits<AB>::template Arg<0>::bareType;
     return [=] (C cont)
     {
@@ -208,49 +213,9 @@ namespace async
               typename function_traits<F>::template Arg<1>::bareType>
             ::type,
             typename C = typename function_traits<F>::returnType>
-  inline Async<C> concurrently(AA&& aa, AB&& ab, F f)
+  inline Async<C> concurrently(AA&& aa, AB&& ab, F&& f)
   {
-    using A = typename function_traits<F>::template Arg<0>::bareType;
-    using B = typename function_traits<F>::template Arg<1>::bareType;
-
-    struct Data
-    {
-      std::unique_ptr<A> pa;
-      std::unique_ptr<B> pb;
-      std::mutex m;
-    };
-    std::shared_ptr<Data> pData = std::make_shared<Data>();
-
-    return [=] (typename Continuation<C>::type cont)
-    {
-      aa([=] (A a) {
-          bool have_b = false;
-          {
-            // if we don't have b already, store a
-            std::lock_guard<std::mutex> g(pData->m);
-            have_b = static_cast<bool>(pData->pb);
-            if (!have_b)
-              pData->pa = std::make_unique<A>(std::move(a));
-          }
-          // if we have both sides, call the continuation and we're done
-          if (have_b)
-            cont(f(std::move(a), std::move(*pData->pb)));
-        });
-
-      ab([=] (B b) {
-          bool have_a = false;
-          {
-            // if we don't have a already, store b
-            std::lock_guard<std::mutex> g(pData->m);
-            have_a = static_cast<bool>(pData->pa);
-            if (!have_a)
-              pData->pb = std::make_unique<B>(std::move(b));
-          }
-          // if we have both sides, call the continuation and we're done
-          if (have_a)
-            cont(f(std::move(*pData->pa), std::move(b)));
-        });
-    };
+    return apply(fmap(std::forward<F>(f), std::forward<AA>(aa)), std::forward<AB>(ab));
   }
 
   // The zero element of the Async monoid. It never calls its continuation.
