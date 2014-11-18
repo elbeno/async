@@ -321,6 +321,8 @@ void testAsync()
   {
     (async::pure(40) && async::pure("foo"))
       ([] (std::pair<int, string> p) { cout << p.first << "," << p.second << endl; });
+    (async::pure(40) && async::ignore(AsyncVoid()))
+      ([] (std::pair<int, async::Void> p) { cout << p.first << endl; });
   }
 
   {

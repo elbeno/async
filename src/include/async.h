@@ -202,9 +202,17 @@ namespace async
     return s << "(void)";
   }
 
-  // Run two asyncs concurrently: the technique is similar to apply. TODO:
-  // support either or both AA/AB being Async<void> (a similar approach to
-  // sequence()).
+  // Convert an Async<void> to an Async<Void>. Useful for using Async<void> with
+  // && and || operators.
+  Async<Void> ignore(Async<void>&& av)
+  {
+    return [=] (typename Continuation<Void>::type cont)
+    {
+      av([=] () { cont(Void()); });
+    };
+  }
+
+  // Run two asyncs concurrently.
   template <typename F,
             typename AA = typename Async<
               typename function_traits<F>::template Arg<0>::bareType>
@@ -227,8 +235,7 @@ namespace async
 
   // Race two Asyncs: call the continuation with the result of the first one
   // that completes. Problem: how to cancel the other one, how to clean up in
-  // case of ORing with zero. TODO: support either or both AA/AB being
-  // Async<void> (a similar approach to sequence()).
+  // case of ORing with zero.
   template <typename AA, typename AB,
             typename A = typename FromAsync<AA>::type,
             typename B = typename FromAsync<AB>::type>
@@ -290,6 +297,8 @@ inline AB operator>(AA&& a, F&& f)
                                    std::forward<F>(f));
 }
 
+// The behaviour of && is to return the pair of results.
+
 template <typename AA, typename AB,
           typename A = typename async::FromAsync<AA>::type,
           typename B = typename async::FromAsync<AB>::type>
@@ -299,6 +308,9 @@ inline Async<std::pair<A,B>> operator&&(AA&& a, AB&& b)
                              std::forward<AB>(b),
                              std::make_pair<A,B>);
 }
+
+// The behaviour of || is to return the result of whichever async completed
+// first.
 
 template <typename AA, typename AB,
           typename A = typename async::FromAsync<AA>::type,
