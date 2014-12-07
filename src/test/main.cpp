@@ -211,6 +211,181 @@ void testOr()
 }
 
 //------------------------------------------------------------------------------
+// Performance tests: number of copies
+
+struct CopyTest
+{
+  CopyTest() { ++s_constructCount; }
+  ~CopyTest() { ++s_destructCount; }
+  CopyTest(const CopyTest& other) { ++s_copyConstructCount; }
+  CopyTest(CopyTest&& other) { ++s_moveConstructCount; }
+  CopyTest& operator=(const CopyTest& other) { ++s_assignmentCount; return *this; }
+  CopyTest& operator=(CopyTest&& other) { ++s_moveAssignmentCount; return *this; }
+
+  static int s_constructCount;
+  static int s_destructCount;
+  static int s_copyConstructCount;
+  static int s_moveConstructCount;
+  static int s_assignmentCount;
+  static int s_moveAssignmentCount;
+
+  static void Reset()
+  {
+    s_constructCount = 0;
+    s_destructCount = 0;
+    s_copyConstructCount = 0;
+    s_moveConstructCount = 0;
+    s_assignmentCount = 0;
+    s_moveAssignmentCount = 0;
+  }
+
+  static void Stats()
+  {
+    cout << s_constructCount << " constructs" << endl;
+    cout << s_destructCount << " destructs" << endl;
+    cout << s_copyConstructCount << " copy constructs" << endl;
+    cout << s_moveConstructCount << " move constructs" << endl;
+    cout << s_assignmentCount << " assignments" << endl;
+    cout << s_moveAssignmentCount << " move assignments" << endl;
+    Reset();
+  }
+
+  static void ExpectCopies(int n)
+  {
+    assert(s_copyConstructCount <= n);
+    Reset();
+  }
+};
+
+int CopyTest::s_constructCount;
+int CopyTest::s_destructCount;
+int CopyTest::s_copyConstructCount;
+int CopyTest::s_moveConstructCount;
+int CopyTest::s_assignmentCount;
+int CopyTest::s_moveAssignmentCount;
+
+Async<CopyTest> AsyncCopyTest()
+{
+  return [] (std::function<void (CopyTest)> f) { f(CopyTest()); };
+}
+
+CopyTest CopyTestId(const CopyTest& c)
+{
+  return c;
+}
+
+int NumCopies(const CopyTest& c)
+{
+  return c.s_copyConstructCount;
+}
+
+void testCopiesFmap()
+{
+  CopyTest::Reset();
+
+  {
+    auto a = AsyncCopyTest();
+    CopyTest::ExpectCopies(0);
+  }
+
+  {
+    auto a = AsyncCopyTest();
+    a([] (const CopyTest&) {});
+    CopyTest::ExpectCopies(0);
+  }
+
+  {
+    auto a = AsyncCopyTest();
+    auto b = fmap(NumCopies, a);
+    b([] (int i) {});
+    CopyTest::ExpectCopies(0);
+  }
+
+  {
+    auto b = fmap(NumCopies, AsyncCopyTest());
+    b([] (int i) {});
+    CopyTest::ExpectCopies(0);
+  }
+
+  {
+    auto a = AsyncCopyTest();
+    auto b = fmap(NumCopies, fmap(CopyTestId, a));
+    b([] (int i) {});
+    CopyTest::ExpectCopies(1); // CopyTestId copies its argument
+  }
+}
+
+void testCopiesPure()
+{
+  CopyTest::Reset();
+
+  // rvalue
+  {
+    auto a = pure(CopyTest());
+    a([] (const CopyTest&) {});
+    CopyTest::ExpectCopies(0);
+  }
+
+  // lvalue
+  {
+    CopyTest c;
+    auto a = pure(c);
+    a([] (const CopyTest&) {});
+    CopyTest::ExpectCopies(1); // pure must capture its argument
+  }
+}
+
+int AddCopies2(const CopyTest& c1, const CopyTest& c2)
+{
+  return c1.s_copyConstructCount + c2.s_copyConstructCount;
+}
+
+int AddCopies3(const CopyTest& c1, const CopyTest& c2, const CopyTest& c3)
+{
+  return c1.s_copyConstructCount + c2.s_copyConstructCount + c3.s_copyConstructCount;
+}
+
+void testCopiesApply()
+{
+  CopyTest::Reset();
+
+  cout << "Testing copies for apply" << endl;
+
+  {
+    auto b = apply(fmap(AddCopies2, pure(CopyTest())), pure(CopyTest()));
+    b([] (int) {});
+    cout << "After fmap(rvalue)/apply(rvalue) and retrieval:" << endl;
+  }
+  CopyTest::Stats();
+
+  return;
+
+  {
+    auto a = pure(CopyTest());
+    auto b = apply(fmap(AddCopies2, a), pure(CopyTest()));
+    b([] (int) {});
+    cout << "After fmap(lvalue)/apply(rvalue) and retrieval:" << endl;
+  }
+  CopyTest::Stats();
+
+  {
+    auto a = pure(CopyTest());
+    auto b = apply(fmap(AddCopies2, a), a);
+    b([] (int) {});
+    cout << "After fmap(lvalue)/apply(lvalue) and retrieval:" << endl;
+  }
+  CopyTest::Stats();
+
+  {
+    auto b = apply(apply(fmap(AddCopies3, pure(CopyTest())), pure(CopyTest())), pure(CopyTest()));
+    b([] (int) {});
+    cout << "After fmap/apply/apply(rvalue) and retrieval:" << endl;
+  }
+  CopyTest::Stats();
+}
+
+
+//------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
   testFmap();
@@ -219,6 +394,10 @@ int main(int argc, char* argv[])
   testSequence();
   testAnd();
   testOr();
+
+  testCopiesFmap();
+  testCopiesPure();
+  testCopiesApply();
 
   return 0;
 }

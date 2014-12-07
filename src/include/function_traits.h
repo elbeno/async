@@ -15,7 +15,7 @@ struct function_traits
 template <typename R, typename... A>
 struct function_traits<R(A...)>
 {
-  using functionType = std::function<R(A...)>;
+  using F = std::function<R(A...)>;
   using returnType = R;
 
   static const size_t arity = sizeof...(A);
@@ -29,7 +29,7 @@ struct function_traits<R(A...)>
 
   // Application calls the function
   using appliedType = R;
-  static inline appliedType apply(functionType f, A&&... args)
+  static inline appliedType apply(F&& f, A&&... args)
   {
     return f(std::forward<A...>(args...));
   }
@@ -39,7 +39,7 @@ struct function_traits<R(A...)>
 template <typename R, typename A1, typename A2>
 struct function_traits<R(A1, A2)>
 {
-  using functionType = std::function<R(A1, A2)>;
+  using F = std::function<R(A1, A2)>;
   using returnType = R;
 
   static const size_t arity = 2;
@@ -53,13 +53,14 @@ struct function_traits<R(A1, A2)>
 
   // (Partial) Application binds the first argument
   using appliedType = std::function<R(A2)>;
-  static inline appliedType apply(functionType f, A1&& a1)
+  static inline appliedType apply(F&& f, A1&& a1)
   {
-    // in case a1 is an rvalue ref, we need to capture "by move" and make it
+    // in case a1 is an rvalue ref, we need to capture "by forward" and make it
     // mutable, to call the function with a move
-    return [f, a = std::move(a1)] (A2&& a2) mutable -> R
+    return [f1 = std::forward<F>(f), a = std::forward<A1>(a1)]
+      (A2&& a2) mutable -> R
     {
-      return f(std::move(a), std::forward<A2>(a2));
+      return f1(std::move(a), std::forward<A2>(a2));
     };
   }
 };
@@ -68,7 +69,7 @@ struct function_traits<R(A1, A2)>
 template <typename R, typename A1, typename A2, typename... A>
 struct function_traits<R(A1, A2, A...)>
 {
-  using functionType = std::function<R(A1, A2, A...)>;
+  using F = std::function<R(A1, A2, A...)>;
   using returnType = R;
 
   static const size_t arity = 2 + sizeof...(A);
@@ -82,12 +83,13 @@ struct function_traits<R(A1, A2, A...)>
 
   // (Partial) Application binds the first argument
   using appliedType = std::function<R(A2, A...)>;
-  static inline appliedType apply(functionType f, A1&& a1)
+  static inline appliedType apply(F&& f, A1&& a1)
   {
-    // see capture-by-move note above
-    return [f, a = std::move(a1)] (A2&& a2, A&&... args) mutable -> R
+    // see capture-by-forward note above
+    return [f1 = std::forward<F>(f), a = std::forward<A1>(a1)]
+      (A2&& a2, A&&... args) mutable -> R
     {
-      return f(std::move(a), std::forward<A2>(a2), std::forward<A...>(args...));
+      return f1(std::move(a), std::forward<A2>(a2), std::forward<A...>(args...));
     };
   }
 };

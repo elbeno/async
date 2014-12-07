@@ -19,7 +19,7 @@
 template <typename T>
 struct Continuation
 {
-  using type = std::function<void (T)>;
+  using type = std::function<void (typename std::decay<T>::type)>;
 };
 
 template <>
@@ -60,9 +60,13 @@ namespace async
   // captured value.
   // a -> m a
   template <typename A>
-  inline Async<A> pure(A a)
+  inline Async<A> pure(A&& a)
   {
-    return [a] (typename Continuation<A>::type cont) { cont(a); };
+    return [a1 = std::forward<A>(a)]
+      (typename Continuation<A>::type cont) mutable
+    {
+      cont(std::move(a1));
+    };
   }
 
   // Fmap a function into an async context: the new async will pass the existing
@@ -79,9 +83,12 @@ namespace async
     using A = typename function_traits<F>::template Arg<0>::bareType;
     using B = typename function_traits<F>::appliedType;
 
-    return [=] (typename Continuation<B>::type cont)
+    return [f1 = std::forward<F>(f), aa1 = std::forward<AA>(aa)]
+      (const typename Continuation<B>::type& cont)
     {
-      aa([=] (A a) { cont(function_traits<F>::apply(f, std::move(a))); });
+      aa1([=] (A&& a) {
+          cont(function_traits<F>::apply(std::move(f1), std::forward<A>(a)));
+        });
     };
   }
 
@@ -99,7 +106,7 @@ namespace async
             typename B = typename function_traits<
               typename FromAsync<AF>::type>
             ::appliedType>
-  inline Async<B> apply(AF af, AA&& aa)
+  inline Async<B> apply(AF&& af, AA&& aa)
   {
     using A = typename FromAsync<AA>::type;
     using F = typename FromAsync<AF>::type;
@@ -112,34 +119,35 @@ namespace async
     };
     std::shared_ptr<Data> pData = std::make_shared<Data>();
 
-    return [=] (typename Continuation<B>::type cont)
+    return [pData, af1 = std::forward<AF>(af), aa1 = std::forward<AA>(aa)]
+      (const typename Continuation<B>::type& cont)
     {
-      af([=] (F f) {
+      af1([=] (F&& f) {
           bool have_a = false;
           {
             // if we don't have a already, store f
             std::lock_guard<std::mutex> g(pData->m);
             have_a = static_cast<bool>(pData->pa);
             if (!have_a)
-              pData->pf = std::make_unique<F>(std::move(f));
+              pData->pf = std::make_unique<F>(std::forward<F>(f));
           }
           // if we have both sides, call the continuation and we're done
           if (have_a)
-            cont(function_traits<F>::apply(f, std::move(*pData->pa)));
+            cont(function_traits<F>::apply(std::forward<F>(f), std::move(*pData->pa)));
         });
 
-      aa([=] (A a) {
+      aa1([=] (A&& a) {
           bool have_f = false;
           {
             // if we don't have f already, store a
             std::lock_guard<std::mutex> g(pData->m);
             have_f = static_cast<bool>(pData->pf);
             if (!have_f)
-              pData->pa = std::make_unique<A>(std::move(a));
+              pData->pa = std::make_unique<A>(std::forward<A>(a));
           }
           // if we have both sides, call the continuation and we're done
           if (have_f)
-            cont(function_traits<F>::apply(*pData->pf, std::move(a)));
+            cont(function_traits<F>::apply(std::move(*pData->pf), std::forward<A>(a)));
         });
     };
   }
@@ -158,7 +166,7 @@ namespace async
   {
     using A = typename function_traits<F>::template Arg<0>::bareType;
     using C = typename function_traits<AB>::template Arg<0>::bareType;
-    return [=] (C cont)
+    return [=] (const C& cont)
     {
       aa([=] (A a) { f(std::move(a))(cont); });
     };
@@ -174,7 +182,7 @@ namespace async
     inline AB operator()(AA&& aa, F&& f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
-      return [=] (C cont)
+      return [=] (const C& cont)
       {
         aa([=] (A) { f()(cont); });
       };
@@ -188,7 +196,7 @@ namespace async
     inline AB operator()(AA&& aa, F&& f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
-      return [=] (C cont)
+      return [=] (const C& cont)
       {
         aa([=] () { f()(cont); });
       };
@@ -218,7 +226,7 @@ namespace async
 
   inline Async<Void> ignore(Async<void> av)
   {
-    return [=] (typename Continuation<Void>::type cont)
+    return [=] (const typename Continuation<Void>::type& cont)
     {
       av([=] () { cont(Void()); });
     };
@@ -303,7 +311,7 @@ namespace async
     };
     std::shared_ptr<Data> pData = std::make_shared<Data>();
 
-    return [=] (typename Continuation<Either<A,B>>::type cont)
+    return [=] (const typename Continuation<Either<A,B>>::type& cont)
     {
       aa([=] (A a) {
           bool done = false;

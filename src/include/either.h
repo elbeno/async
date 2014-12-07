@@ -111,7 +111,7 @@ namespace either
 {
 
   template <typename A, typename F>
-  Either<A, typename function_traits<F>::returnType> fmap(
+  inline Either<A, typename function_traits<F>::returnType> fmap(
       const F& f,
       const Either<A, typename function_traits<F>::template Arg<0>::bareType>& e)
   {
@@ -123,7 +123,7 @@ namespace either
   }
 
   template <typename A, typename B>
-  Either<A, B> mjoin(const Either<A, Either<A, B>>& e)
+  inline Either<A, B> join(const Either<A, Either<A, B>>& e)
   {
     if (!e.isRight())
       return Either<A, B>(e.m_left, true);
@@ -131,7 +131,7 @@ namespace either
   }
 
   template <typename A, typename F>
-  typename function_traits<F>::returnType mbind(
+  inline typename function_traits<F>::returnType bind(
       const F& f,
       const Either<A, typename function_traits<F>::template Arg<0>::bareType>& e)
   {
@@ -139,9 +139,9 @@ namespace either
   }
 
   template <typename A, typename B>
-  Either<A, B> mreturn(B b)
+  inline Either<A, B> pure(B&& b)
   {
-    return Either<A, B>(b);
+    return Either<A, B>(std::forward<B>(b));
   }
 }
 
@@ -152,15 +152,17 @@ namespace either
 // without parens, we need an alternative operator
 
 template <typename A, typename F>
-typename function_traits<F>::returnType operator>=(
-    const Either<A, typename function_traits<F>::template Arg<0>::bareType>& e,
-    const F& f)
+inline typename function_traits<F>::returnType operator>=(
+    Either<A, typename function_traits<F>::template Arg<0>::bareType>&& e,
+    F&& f)
 {
-  return either::mbind(f, e);
+  return either::bind(
+      std::forward<F>(f),
+      std::forward<Either<A, typename function_traits<F>::template Arg<0>::bareType>>(e));
 }
 
 template <typename A, typename B, typename F>
-typename function_traits<F>::returnType operator>(
+inline typename function_traits<F>::returnType operator>(
     const Either<A,B>&, const F& f)
 {
   return f();
