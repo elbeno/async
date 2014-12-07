@@ -204,7 +204,19 @@ namespace async
 
   // Convert an Async<void> to an Async<Void>. Useful for using Async<void> with
   // && and || operators.
-  Async<Void> ignore(Async<void>&& av)
+  template <typename T>
+  struct IgnoreVoid
+  {
+    using type = T;
+  };
+
+  template <>
+  struct IgnoreVoid<void>
+  {
+    using type = Void;
+  };
+
+  inline Async<Void> ignore(Async<void> av)
   {
     return [=] (typename Continuation<Void>::type cont)
     {
@@ -212,7 +224,6 @@ namespace async
     };
   }
 
-  // Run two asyncs concurrently.
   template <typename F,
             typename AA = typename Async<
               typename function_traits<F>::template Arg<0>::bareType>
@@ -226,9 +237,52 @@ namespace async
     return apply(fmap(std::forward<F>(f), std::forward<AA>(aa)), std::forward<AB>(ab));
   }
 
+  template <typename F, typename A, typename B>
+  struct runConcurrently
+  {
+    using C = typename function_traits<F>::returnType;
+    inline Async<C> operator()(Async<A>&& aa, Async<B>&& ab, F&& f)
+    {
+      return concurrently<F>(std::forward<Async<A>>(aa), std::forward<Async<B>>(ab),
+                             std::forward<F>(f));
+    }
+  };
+
+  template <typename F, typename A>
+  struct runConcurrently<F, A, void>
+  {
+    using C = typename function_traits<F>::returnType;
+    inline Async<C> operator()(Async<A>&& aa, Async<void>&& ab, F&& f)
+    {
+      return concurrently<F>(std::forward<Async<A>>(aa), ignore(ab),
+                             std::forward<F>(f));
+    }
+  };
+
+  template <typename F, typename B>
+  struct runConcurrently<F, void, B>
+  {
+    using C = typename function_traits<F>::returnType;
+    inline Async<C> operator()(Async<void>&& aa, Async<B>&& ab, F&& f)
+    {
+      return concurrently<F>(ignore(aa), std::forward<Async<B>>(ab),
+                             std::forward<F>(f));
+    }
+  };
+
+  template <typename F>
+  struct runConcurrently<F, void, void>
+  {
+    using C = typename function_traits<F>::returnType;
+    inline Async<C> operator()(Async<void>&& aa, Async<void>&& ab, F&& f)
+    {
+      return concurrently<F>(ignore(aa), ignore(ab), std::forward<F>(f));
+    }
+  };
+
   // The zero element of the Async monoid. It never calls its continuation.
   template <typename T = Void>
-  Async<T> zero()
+  inline Async<T> zero()
   {
     return [] (typename Continuation<T>::type) {};
   }
@@ -275,6 +329,45 @@ namespace async
     };
   }
 
+  template <typename A, typename B>
+  struct runRace
+  {
+    inline Async<Either<A,B>> operator()(Async<A>&& aa, Async<B>&& ab)
+    {
+      return race<Async<A>, Async<B>>(
+          std::forward<Async<A>>(aa), std::forward<Async<B>>(ab));
+    }
+  };
+
+  template <typename A>
+  struct runRace<A, void>
+  {
+    inline Async<Either<A,Void>> operator()(Async<A>&& aa, Async<void>&& ab)
+    {
+      return race<Async<A>, Async<Void>>(
+          std::forward<Async<A>>(aa), ignore(ab));
+    }
+  };
+
+  template <typename B>
+  struct runRace<void, B>
+  {
+    inline Async<Either<Void, B>> operator()(Async<void>&& aa, Async<B>&& ab)
+    {
+      return race<Async<Void>, Async<B>>(
+          ignore(aa), std::forward<Async<B>>(ab));
+    }
+  };
+
+  template <>
+  struct runRace<void, void>
+  {
+    inline Async<Either<Void, Void>> operator()(Async<void>&& aa, Async<void>&& ab)
+    {
+      return race<Async<Void>, Async<Void>>(
+          ignore(aa), ignore(ab));
+    }
+  };
 }
 
 // Syntactic sugar: >= is Haskell's >>=, and > is Haskell's >>.
@@ -297,26 +390,32 @@ inline AB operator>(AA&& a, F&& f)
                                    std::forward<F>(f));
 }
 
-// The behaviour of && is to return the pair of results.
+// The behaviour of && is to return the pair of results. If one of the operands
+// is Async<void>, it is converted to Async<Void> for the purposes of making a
+// pair.
 
 template <typename AA, typename AB,
-          typename A = typename async::FromAsync<AA>::type,
-          typename B = typename async::FromAsync<AB>::type>
+          typename A = typename async::IgnoreVoid<typename async::FromAsync<AA>::type>::type,
+          typename B = typename async::IgnoreVoid<typename async::FromAsync<AB>::type>::type>
 inline Async<std::pair<A,B>> operator&&(AA&& a, AB&& b)
 {
-  return async::concurrently(std::forward<AA>(a),
-                             std::forward<AB>(b),
-                             std::make_pair<A,B>);
+  using F = decltype(std::make_pair<A,B>);
+  using RA = typename async::FromAsync<AA>::type;
+  using RB = typename async::FromAsync<AB>::type;
+  return async::runConcurrently<F,RA,RB>()(
+      std::forward<AA>(a), std::forward<AB>(b), std::make_pair<A,B>);
 }
 
-// The behaviour of || is to return the result of whichever async completed
+// The behaviour of || is to return the result of whichever Async completed
 // first.
 
 template <typename AA, typename AB,
-          typename A = typename async::FromAsync<AA>::type,
-          typename B = typename async::FromAsync<AB>::type>
+          typename A = typename async::IgnoreVoid<typename async::FromAsync<AA>::type>::type,
+          typename B = typename async::IgnoreVoid<typename async::FromAsync<AB>::type>::type>
 inline Async<Either<A,B>> operator||(AA&& a, AB&& b)
 {
-  return async::race(std::forward<AA>(a),
-                     std::forward<AB>(b));
+  using RA = typename async::FromAsync<AA>::type;
+  using RB = typename async::FromAsync<AB>::type;
+  return async::runRace<RA,RB>()(std::forward<AA>(a),
+                                 std::forward<AB>(b));
 }
