@@ -12,14 +12,14 @@ struct Either
   typedef Left L;
   typedef Right R;
 
-  explicit Either(const R& r)
+  explicit Either(R&& r)
     : m_tag(Tag::RIGHT)
-    , m_right(r)
+    , m_right(std::forward<R>(r))
   {}
 
-  Either(const L& l, bool)
+  Either(L&& l, bool)
     : m_tag(Tag::LEFT)
-    , m_left(l)
+    , m_left(std::forward<L>(l))
   {}
 
   Either(const Either& other)

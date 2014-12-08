@@ -39,7 +39,9 @@ struct function_traits<R(A...)>
 template <typename R, typename A1, typename A2>
 struct function_traits<R(A1, A2)>
 {
-  using F = std::function<R(A1, A2)>;
+  // decay the first arg so we can use a universal ref and not incur a copy
+  using A1B = typename std::decay<A1>::type;
+  using F = std::function<R(A1B, A2)>;
   using returnType = R;
 
   static const size_t arity = 2;
@@ -53,11 +55,11 @@ struct function_traits<R(A1, A2)>
 
   // (Partial) Application binds the first argument
   using appliedType = std::function<R(A2)>;
-  static inline appliedType apply(F&& f, A1&& a1)
+  static inline appliedType apply(F&& f, A1B&& a1)
   {
     // in case a1 is an rvalue ref, we need to capture "by forward" and make it
     // mutable, to call the function with a move
-    return [f1 = std::forward<F>(f), a = std::forward<A1>(a1)]
+    return [f1 = std::forward<F>(f), a = std::forward<A1B>(a1)]
       (A2&& a2) mutable -> R
     {
       return f1(std::move(a), std::forward<A2>(a2));
@@ -69,7 +71,9 @@ struct function_traits<R(A1, A2)>
 template <typename R, typename A1, typename A2, typename... A>
 struct function_traits<R(A1, A2, A...)>
 {
-  using F = std::function<R(A1, A2, A...)>;
+  // see decay note above
+  using A1B = typename std::decay<A1>::type;
+  using F = std::function<R(A1B, A2, A...)>;
   using returnType = R;
 
   static const size_t arity = 2 + sizeof...(A);
@@ -83,10 +87,10 @@ struct function_traits<R(A1, A2, A...)>
 
   // (Partial) Application binds the first argument
   using appliedType = std::function<R(A2, A...)>;
-  static inline appliedType apply(F&& f, A1&& a1)
+  static inline appliedType apply(F&& f, A1B&& a1)
   {
     // see capture-by-forward note above
-    return [f1 = std::forward<F>(f), a = std::forward<A1>(a1)]
+    return [f1 = std::forward<F>(f), a = std::forward<A1B>(a1)]
       (A2&& a2, A&&... args) mutable -> R
     {
       return f1(std::move(a), std::forward<A2>(a2), std::forward<A...>(args...));

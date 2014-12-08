@@ -82,12 +82,13 @@ namespace async
   {
     using A = typename function_traits<F>::template Arg<0>::bareType;
     using B = typename function_traits<F>::appliedType;
+    using C = typename Continuation<B>::type;
 
     return [f1 = std::forward<F>(f), aa1 = std::forward<AA>(aa)]
-      (const typename Continuation<B>::type& cont)
+      (C&& cont)
     {
-      aa1([=] (A&& a) {
-          cont(function_traits<F>::apply(std::move(f1), std::forward<A>(a)));
+      aa1([c = std::forward<C>(cont), f2 = std::move(f1)] (A&& a) {
+          c(function_traits<F>::apply(std::move(f2), std::forward<A>(a)));
         });
     };
   }
@@ -110,6 +111,7 @@ namespace async
   {
     using A = typename FromAsync<AA>::type;
     using F = typename FromAsync<AF>::type;
+    using C = typename Continuation<B>::type;
 
     struct Data
     {
@@ -120,9 +122,9 @@ namespace async
     std::shared_ptr<Data> pData = std::make_shared<Data>();
 
     return [pData, af1 = std::forward<AF>(af), aa1 = std::forward<AA>(aa)]
-      (const typename Continuation<B>::type& cont)
+      (C&& cont)
     {
-      af1([=] (F&& f) {
+      af1([pData, cont] (F&& f) {
           bool have_a = false;
           {
             // if we don't have a already, store f
@@ -136,7 +138,7 @@ namespace async
             cont(function_traits<F>::apply(std::forward<F>(f), std::move(*pData->pa)));
         });
 
-      aa1([=] (A&& a) {
+      aa1([pData, c = std::forward<C>(cont)] (A&& a) {
           bool have_f = false;
           {
             // if we don't have f already, store a
@@ -147,7 +149,7 @@ namespace async
           }
           // if we have both sides, call the continuation and we're done
           if (have_f)
-            cont(function_traits<F>::apply(std::move(*pData->pf), std::forward<A>(a)));
+            c(function_traits<F>::apply(std::move(*pData->pf), std::forward<A>(a)));
         });
     };
   }
@@ -157,18 +159,17 @@ namespace async
   // passes the new continuation to that async value. A can't be void here; use
   // sequence instead for that case.
   // m a -> (a -> m b) - > m b
-  template <typename F,
-            typename AA = typename Async<
-              typename function_traits<F>::template Arg<0>::bareType>
-            ::type,
+  template <typename F, typename AA,
             typename AB = typename function_traits<F>::returnType>
   inline AB bind(AA&& aa, F&& f)
   {
-    using A = typename function_traits<F>::template Arg<0>::bareType;
+    using A = typename async::FromAsync<AA>::type;
     using C = typename function_traits<AB>::template Arg<0>::bareType;
-    return [=] (const C& cont)
+    return [f1 = std::forward<F>(f), aa1 = std::forward<AA>(aa)]
+      (C&& cont)
     {
-      aa([=] (A a) { f(std::move(a))(cont); });
+      aa1([c = std::forward<C>(cont), f2 = std::move(f1)] (A&& a) {
+          f2(std::forward<A>(a))(c); });
     };
   }
 
@@ -182,9 +183,11 @@ namespace async
     inline AB operator()(AA&& aa, F&& f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
-      return [=] (const C& cont)
+      return [f1 = std::forward<F>(f), aa1 = std::forward<Async<A>>(aa)]
+        (C&& cont)
       {
-        aa([=] (A) { f()(cont); });
+        aa1([c = std::forward<C>(cont), f2 = std::move(f1)] (A&&) {
+            f2()(c); });
       };
     }
   };
@@ -196,9 +199,11 @@ namespace async
     inline AB operator()(AA&& aa, F&& f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
-      return [=] (const C& cont)
+      return [f1 = std::forward<F>(f), aa1 = std::forward<Async<void>>(aa)]
+        (C&& cont)
       {
-        aa([=] () { f()(cont); });
+        aa1([c = std::forward<C>(cont), f2 = std::move(f1)] () {
+            f2()(c); });
       };
     }
   };
@@ -224,11 +229,15 @@ namespace async
     using type = Void;
   };
 
-  inline Async<Void> ignore(Async<void> av)
+  template <typename AT>
+  inline Async<Void> ignore(AT&& at)
   {
-    return [=] (const typename Continuation<Void>::type& cont)
+    using C = typename Continuation<Void>::type;
+    return [at1 = std::forward<AT>(at)]
+      (C&& cont)
     {
-      av([=] () { cont(Void()); });
+      at1([c = std::forward<C>(cont)] () {
+          c(Void()); });
     };
   }
 
@@ -251,7 +260,8 @@ namespace async
     using C = typename function_traits<F>::returnType;
     inline Async<C> operator()(Async<A>&& aa, Async<B>&& ab, F&& f)
     {
-      return concurrently<F>(std::forward<Async<A>>(aa), std::forward<Async<B>>(ab),
+      return concurrently<F>(std::forward<Async<A>>(aa),
+                             std::forward<Async<B>>(ab),
                              std::forward<F>(f));
     }
   };
@@ -262,7 +272,8 @@ namespace async
     using C = typename function_traits<F>::returnType;
     inline Async<C> operator()(Async<A>&& aa, Async<void>&& ab, F&& f)
     {
-      return concurrently<F>(std::forward<Async<A>>(aa), ignore(ab),
+      return concurrently<F>(std::forward<Async<A>>(aa),
+                             ignore(std::forward<Async<void>>(ab)),
                              std::forward<F>(f));
     }
   };
@@ -273,7 +284,8 @@ namespace async
     using C = typename function_traits<F>::returnType;
     inline Async<C> operator()(Async<void>&& aa, Async<B>&& ab, F&& f)
     {
-      return concurrently<F>(ignore(aa), std::forward<Async<B>>(ab),
+      return concurrently<F>(ignore(std::forward<Async<void>>(aa)),
+                             std::forward<Async<B>>(ab),
                              std::forward<F>(f));
     }
   };
@@ -284,7 +296,9 @@ namespace async
     using C = typename function_traits<F>::returnType;
     inline Async<C> operator()(Async<void>&& aa, Async<void>&& ab, F&& f)
     {
-      return concurrently<F>(ignore(aa), ignore(ab), std::forward<F>(f));
+      return concurrently<F>(ignore(std::forward<Async<void>>(aa)),
+                             ignore(std::forward<Async<void>>(ab)),
+                             std::forward<F>(f));
     }
   };
 
@@ -311,9 +325,11 @@ namespace async
     };
     std::shared_ptr<Data> pData = std::make_shared<Data>();
 
-    return [=] (const typename Continuation<Either<A,B>>::type& cont)
+    using C = typename Continuation<Either<A,B>>::type;
+    return [pData, aa1 = std::forward<AA>(aa), ab1 = std::forward<AB>(ab)]
+      (C&& cont)
     {
-      aa([=] (A a) {
+      aa1([pData, c = std::forward<C>(cont)] (A&& a) {
           bool done = false;
           {
             std::lock_guard<std::mutex> g(pData->m);
@@ -321,10 +337,10 @@ namespace async
             pData->done = true;
           }
           if (!done)
-            cont(Either<A,B>(std::move(a), true));
+            c(Either<A,B>(std::forward<A>(a), true));
         });
 
-      ab([=] (B b) {
+      ab1([pData, c = std::forward<C>(cont)] (B&& b) {
           bool done = false;
           {
             std::lock_guard<std::mutex> g(pData->m);
@@ -332,7 +348,7 @@ namespace async
             pData->done = true;
           }
           if (!done)
-            cont(Either<A,B>(std::move(b)));
+            c(Either<A,B>(std::forward<B>(b)));
         });
     };
   }
@@ -380,13 +396,13 @@ namespace async
 
 // Syntactic sugar: >= is Haskell's >>=, and > is Haskell's >>.
 
-template <typename F,
-          typename A = typename function_traits<F>::template Arg<0>::bareType,
+template <typename F, typename AA,
+          typename A = typename async::FromAsync<AA>::type,
           typename AB = typename function_traits<F>::returnType>
-inline AB operator>=(Async<A>&& a, F&& f)
+inline AB operator>=(AA&& a, F&& f)
 {
-  return async::bind(std::forward<Async<A>>(a),
-                     std::forward<F>(f));
+  return async::bind<F,AA>(std::forward<AA>(a),
+                           std::forward<F>(f));
 }
 
 template <typename F, typename AA,

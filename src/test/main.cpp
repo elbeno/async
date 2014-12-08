@@ -54,6 +54,14 @@ void testFmap()
     b([&result] (char c) { result = c; });
     assert(result == '1');
   }
+
+  // lambdas
+  {
+    auto a = fmap([] (int n) { return to_string(n); }, i);
+    string result;
+    a([&result] (const string& s) { result = s; });
+    assert(result == "123");
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -66,12 +74,25 @@ int add(int x, int y, int z)
 
 void testApply()
 {
-  auto x = async::fmap(add, async::pure(1));
-  auto y = async::apply(x, async::pure(2));
-  auto z = async::apply(y, async::pure(3));
-  int result;
-  z([&result] (int i) { result = i; });
-  assert(result == 6);
+  // regular functions
+  {
+    auto x = async::fmap(add, async::pure(1));
+    auto y = async::apply(x, async::pure(2));
+    auto z = async::apply(y, async::pure(3));
+    int result;
+    z([&result] (int i) { result = i; });
+    assert(result == 6);
+  }
+
+  // lambdas
+  {
+    auto x = async::fmap([] (int x, int y, int z) { return x + y + z; }, async::pure(1));
+    auto y = async::apply(x, async::pure(2));
+    auto z = async::apply(y, async::pure(3));
+    int result;
+    z([&result] (int i) { result = i; });
+    assert(result == 6);
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -89,10 +110,30 @@ Async<char> AsyncFirstChar(string s)
 
 void testBind()
 {
-  auto a = async::pure(123) >= AsyncToString >= AsyncFirstChar;
-  char result;
-  a([&result] (char c) { result = c; });
-  assert(result == '1');
+  // regular functions
+  {
+    auto a = async::pure(123) >= AsyncToString >= AsyncFirstChar;
+    char result;
+    a([&result] (char c) { result = c; });
+    assert(result == '1');
+  }
+
+  // lambdas
+  {
+    auto a = async::pure(123) >= [] (int i) -> Async<string> {
+      return [i] (std::function<void (string)> f) { f(to_string(i)); }; };
+    string result;
+    a([&result] (const string& s) { result = s; });
+    assert(result == "123");
+  }
+
+  // lvalue bind
+  {
+    auto a = async::pure(123);
+    auto b = a >= AsyncToString;
+    auto c = b >= AsyncFirstChar;
+    c([] (char) {});
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -142,6 +183,20 @@ void testSequence()
     auto a = AsyncIntToVoid(123) > AsyncVoid;
     a([] () {});
   }
+
+  // lambdas
+  {
+    auto a = AsyncChar() > [] () -> Async<void> {
+      return [] (std::function<void ()> f) { f(); }; };
+    a([] () {});
+  }
+
+  // lvalue sequence
+  {
+    auto a = async::pure(123);
+    auto b = a > AsyncChar;
+    b([] (char) {});
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -178,6 +233,16 @@ void testAnd()
     auto a = AsyncVoid() && AsyncVoid();
     a([] (const std::pair<Void,Void>&) {});
   }
+
+  // lvalues
+  /*
+  {
+    auto a1 = AsyncChar();
+    auto a2 = AsyncChar();
+    auto a = a1 && a2;
+    a([] (std::pair<char,char>) {});
+  }
+  */
 }
 
 //------------------------------------------------------------------------------
@@ -208,6 +273,16 @@ void testOr()
     auto a = AsyncVoid() || AsyncVoid();
     a([] (const Either<Void,Void>&) {});
   }
+
+  // lvalues
+  /*
+  {
+    auto a1 = AsyncChar();
+    auto a2 = AsyncChar();
+    auto a = a1 || a2;
+    a([] (Either<char,char>) {});
+  }
+  */
 }
 
 //------------------------------------------------------------------------------
@@ -311,7 +386,8 @@ void testCopiesFmap()
     auto a = AsyncCopyTest();
     auto b = fmap(NumCopies, fmap(CopyTestId, a));
     b([] (int i) {});
-    CopyTest::ExpectCopies(1); // CopyTestId copies its argument
+    // CopyTestId copies its argument
+    CopyTest::ExpectCopies(1);
   }
 }
 
@@ -331,7 +407,8 @@ void testCopiesPure()
     CopyTest c;
     auto a = pure(c);
     a([] (const CopyTest&) {});
-    CopyTest::ExpectCopies(1); // pure must capture its argument
+    // pure must capture its lvalue argument
+    CopyTest::ExpectCopies(1);
   }
 }
 
@@ -349,41 +426,99 @@ void testCopiesApply()
 {
   CopyTest::Reset();
 
-  cout << "Testing copies for apply" << endl;
-
+  // rvalues
   {
     auto b = apply(fmap(AddCopies2, pure(CopyTest())), pure(CopyTest()));
     b([] (int) {});
-    cout << "After fmap(rvalue)/apply(rvalue) and retrieval:" << endl;
+    CopyTest::ExpectCopies(0);
   }
-  CopyTest::Stats();
 
-  return;
+  // move lvalues
+  {
+    auto a1 = pure(CopyTest());
+    auto a2 = pure(CopyTest());
+    auto b = apply(fmap(AddCopies2, std::move(a1)), std::move(a2));
+    b([] (int) {});
+    CopyTest::ExpectCopies(0);
+  }
 
+  // 1 lvalue
   {
     auto a = pure(CopyTest());
     auto b = apply(fmap(AddCopies2, a), pure(CopyTest()));
     b([] (int) {});
-    cout << "After fmap(lvalue)/apply(rvalue) and retrieval:" << endl;
+    CopyTest::ExpectCopies(1);
   }
-  CopyTest::Stats();
 
+  // 2 lvalues
   {
     auto a = pure(CopyTest());
     auto b = apply(fmap(AddCopies2, a), a);
     b([] (int) {});
-    cout << "After fmap(lvalue)/apply(lvalue) and retrieval:" << endl;
+    CopyTest::ExpectCopies(2);
   }
-  CopyTest::Stats();
 
+  // n-ary apply (rvalues)
   {
     auto b = apply(apply(fmap(AddCopies3, pure(CopyTest())), pure(CopyTest())), pure(CopyTest()));
     b([] (int) {});
-    cout << "After fmap/apply/apply(rvalue) and retrieval:" << endl;
+    CopyTest::ExpectCopies(0);
   }
-  CopyTest::Stats();
+
+  // n-ary apply (lvalues)
+  {
+    auto a = pure(CopyTest());
+    auto b = apply(apply(fmap(AddCopies3, a), a), a);
+    b([] (int) {});
+    CopyTest::ExpectCopies(3);
+  }
 }
 
+Async<int> AsyncNumCopies(const CopyTest& c)
+{
+  int i = c.s_copyConstructCount;
+  return [i] (std::function<void (int)> f) { f(i); };
+}
+
+void testCopiesBind()
+{
+  CopyTest::Reset();
+
+  {
+    auto a = async::pure(CopyTest()) >= AsyncNumCopies;
+    a([] (int i) {});
+    CopyTest::ExpectCopies(0);
+  }
+
+  {
+    auto a = async::pure(CopyTest());
+    auto b = a >= AsyncNumCopies;
+    b([] (int i) {});
+    CopyTest::ExpectCopies(1);
+  }
+}
+
+void testCopiesAnd()
+{
+  CopyTest::Reset();
+
+  {
+    auto a = pure(CopyTest()) && pure(CopyTest());
+    a([] (const std::pair<CopyTest,CopyTest>&) {});
+    CopyTest::ExpectCopies(0);
+  }
+}
+
+void testCopiesOr()
+{
+  CopyTest::Reset();
+
+  {
+    auto a = pure(CopyTest()) || pure(CopyTest());
+    a([] (const Either<CopyTest,CopyTest>&) {});
+    CopyTest::ExpectCopies(0);
+  }
+}
 
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])
@@ -398,6 +533,9 @@ int main(int argc, char* argv[])
   testCopiesFmap();
   testCopiesPure();
   testCopiesApply();
+  testCopiesBind();
+  testCopiesAnd();
+  testCopiesOr();
 
   return 0;
 }
