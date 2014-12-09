@@ -2,6 +2,7 @@
 
 #include "function_traits.h"
 #include <ostream>
+#include <utility>
 
 //------------------------------------------------------------------------------
 // The either monad
@@ -9,8 +10,8 @@
 template <typename Left, typename Right>
 struct Either
 {
-  typedef Left L;
-  typedef Right R;
+  using L = Left;
+  using R = Right;
 
   explicit Either(R&& r)
     : m_tag(Tag::RIGHT)
@@ -29,6 +30,15 @@ struct Either
       new (&m_right) R(other.m_right);
     else
       new (&m_left) L(other.m_left);
+  }
+
+  Either(const Either&& other)
+    : m_tag(other.m_tag)
+  {
+    if (other.isRight())
+      new (&m_right) R(std::move(other.m_right));
+    else
+      new (&m_left) L(std::move(other.m_left));
   }
 
   Either& operator=(const Either& other)
@@ -115,19 +125,11 @@ namespace either
       const F& f,
       const Either<A, typename function_traits<F>::template Arg<0>::bareType>& e)
   {
-    typedef typename function_traits<F>::returnType C;
+    using C = typename function_traits<F>::returnType;
 
     if (!e.isRight())
       return Either<A, C>(e.m_left, true);
     return Either<A, C>(f(e.m_right));
-  }
-
-  template <typename A, typename B>
-  inline Either<A, B> join(const Either<A, Either<A, B>>& e)
-  {
-    if (!e.isRight())
-      return Either<A, B>(e.m_left, true);
-    return e.m_right;
   }
 
   template <typename A, typename F>
@@ -135,7 +137,11 @@ namespace either
       const F& f,
       const Either<A, typename function_traits<F>::template Arg<0>::bareType>& e)
   {
-    return mjoin(fmap(f, e));
+    using C = typename function_traits<F>::returnType;
+
+    if (!e.isRight())
+      return Either<A, C>(e.m_left, true);
+    return f(e.m_right);
   }
 
   template <typename A, typename B>
@@ -147,9 +153,6 @@ namespace either
 
 //------------------------------------------------------------------------------
 // sugar operators
-
-// unfortunately in c++, >>= is right associative, so in order to chain binds
-// without parens, we need an alternative operator
 
 template <typename A, typename F>
 inline typename function_traits<F>::returnType operator>=(
@@ -163,7 +166,11 @@ inline typename function_traits<F>::returnType operator>=(
 
 template <typename A, typename B, typename F>
 inline typename function_traits<F>::returnType operator>(
-    const Either<A,B>&, const F& f)
+    Either<A,B>&& e, const F& f)
 {
+  using C = typename function_traits<F>::returnType;
+
+  if (!e.isRight())
+    return Either<A, C>(std::forward<A>(e.m_left), true);
   return f();
 }
