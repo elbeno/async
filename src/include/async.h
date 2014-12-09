@@ -254,50 +254,50 @@ namespace async
     return apply(fmap(std::forward<F>(f), std::forward<AA>(aa)), std::forward<AB>(ab));
   }
 
-  template <typename F, typename A, typename B>
+  template <typename F, typename AA, typename AB, typename A, typename B>
   struct runConcurrently
   {
     using C = typename function_traits<F>::returnType;
-    inline Async<C> operator()(Async<A>&& aa, Async<B>&& ab, F&& f)
+    inline Async<C> operator()(AA&& aa, AB&& ab, F&& f)
     {
-      return concurrently<F>(std::forward<Async<A>>(aa),
-                             std::forward<Async<B>>(ab),
+      return concurrently<F>(std::forward<AA>(aa),
+                             std::forward<AB>(ab),
                              std::forward<F>(f));
     }
   };
 
-  template <typename F, typename A>
-  struct runConcurrently<F, A, void>
+  template <typename F, typename AA, typename AB, typename A>
+  struct runConcurrently<F, AA, AB, A, void>
   {
     using C = typename function_traits<F>::returnType;
-    inline Async<C> operator()(Async<A>&& aa, Async<void>&& ab, F&& f)
+    inline Async<C> operator()(AA&& aa, AB&& ab, F&& f)
     {
-      return concurrently<F>(std::forward<Async<A>>(aa),
-                             ignore(std::forward<Async<void>>(ab)),
+      return concurrently<F>(std::forward<AA>(aa),
+                             ignore(std::forward<AB>(ab)),
                              std::forward<F>(f));
     }
   };
 
-  template <typename F, typename B>
-  struct runConcurrently<F, void, B>
+  template <typename F, typename AA, typename AB, typename B>
+  struct runConcurrently<F, AA, AB, void, B>
   {
     using C = typename function_traits<F>::returnType;
-    inline Async<C> operator()(Async<void>&& aa, Async<B>&& ab, F&& f)
+    inline Async<C> operator()(AA&& aa, AB&& ab, F&& f)
     {
-      return concurrently<F>(ignore(std::forward<Async<void>>(aa)),
-                             std::forward<Async<B>>(ab),
+      return concurrently<F>(ignore(std::forward<AA>(aa)),
+                             std::forward<AB>(ab),
                              std::forward<F>(f));
     }
   };
 
-  template <typename F>
-  struct runConcurrently<F, void, void>
+  template <typename F, typename AA, typename AB>
+  struct runConcurrently<F, AA, AB, void, void>
   {
     using C = typename function_traits<F>::returnType;
-    inline Async<C> operator()(Async<void>&& aa, Async<void>&& ab, F&& f)
+    inline Async<C> operator()(AA&& aa, AB&& ab, F&& f)
     {
-      return concurrently<F>(ignore(std::forward<Async<void>>(aa)),
-                             ignore(std::forward<Async<void>>(ab)),
+      return concurrently<F>(ignore(std::forward<AA>(aa)),
+                             ignore(std::forward<AB>(ab)),
                              std::forward<F>(f));
     }
   };
@@ -353,43 +353,43 @@ namespace async
     };
   }
 
-  template <typename A, typename B>
+  template <typename AA, typename AB, typename A, typename B>
   struct runRace
   {
-    inline Async<Either<A,B>> operator()(Async<A>&& aa, Async<B>&& ab)
+    inline Async<Either<A,B>> operator()(AA&& aa, AB&& ab)
     {
-      return race<Async<A>, Async<B>>(
-          std::forward<Async<A>>(aa), std::forward<Async<B>>(ab));
+      return race<AA, AB>(
+          std::forward<AA>(aa), std::forward<AB>(ab));
     }
   };
 
-  template <typename A>
-  struct runRace<A, void>
+  template <typename AA, typename AB, typename A>
+  struct runRace<AA, AB, A, void>
   {
-    inline Async<Either<A,Void>> operator()(Async<A>&& aa, Async<void>&& ab)
+    inline Async<Either<A,Void>> operator()(AA&& aa, AB&& ab)
     {
-      return race<Async<A>, Async<Void>>(
-          std::forward<Async<A>>(aa), ignore(ab));
+      return race<AA, Async<Void>>(
+          std::forward<AA>(aa), ignore(std::forward<AB>(ab)));
     }
   };
 
-  template <typename B>
-  struct runRace<void, B>
+  template <typename AA, typename AB, typename B>
+  struct runRace<AA, AB, void, B>
   {
-    inline Async<Either<Void, B>> operator()(Async<void>&& aa, Async<B>&& ab)
+    inline Async<Either<Void, B>> operator()(AA&& aa, AB&& ab)
     {
-      return race<Async<Void>, Async<B>>(
-          ignore(aa), std::forward<Async<B>>(ab));
+      return race<Async<Void>, AB>(
+          ignore(std::forward<AA>(aa)), std::forward<AB>(ab));
     }
   };
 
-  template <>
-  struct runRace<void, void>
+  template <typename AA, typename AB>
+  struct runRace<AA, AB, void, void>
   {
-    inline Async<Either<Void, Void>> operator()(Async<void>&& aa, Async<void>&& ab)
+    inline Async<Either<Void, Void>> operator()(AA&& aa, AB&& ab)
     {
       return race<Async<Void>, Async<Void>>(
-          ignore(aa), ignore(ab));
+          ignore(std::forward<AA>(aa)), ignore(std::forward<AB>(ab)));
     }
   };
 }
@@ -426,7 +426,7 @@ inline Async<std::pair<A,B>> operator&&(AA&& a, AB&& b)
   using F = decltype(std::make_pair<A,B>);
   using RA = typename async::FromAsync<AA>::type;
   using RB = typename async::FromAsync<AB>::type;
-  return async::runConcurrently<F,RA,RB>()(
+  return async::runConcurrently<F,AA,AB,RA,RB>()(
       std::forward<AA>(a), std::forward<AB>(b), std::make_pair<A,B>);
 }
 
@@ -440,6 +440,6 @@ inline Async<Either<A,B>> operator||(AA&& a, AB&& b)
 {
   using RA = typename async::FromAsync<AA>::type;
   using RB = typename async::FromAsync<AB>::type;
-  return async::runRace<RA,RB>()(std::forward<AA>(a),
-                                 std::forward<AB>(b));
+  return async::runRace<AA,AB,RA,RB>()(std::forward<AA>(a),
+                                       std::forward<AB>(b));
 }
