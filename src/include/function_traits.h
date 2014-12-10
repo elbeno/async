@@ -15,7 +15,6 @@ struct function_traits
 template <typename R, typename... A>
 struct function_traits<R(A...)>
 {
-  using F = std::function<R(A...)>;
   using returnType = R;
 
   static const size_t arity = sizeof...(A);
@@ -23,12 +22,14 @@ struct function_traits<R(A...)>
   template <size_t n>
   struct Arg
   {
-    using type = typename std::tuple_element<n, std::tuple<A...>>::type;
-    using bareType = typename std::decay<type>::type;
+    using type = std::tuple_element_t<n, std::tuple<A...>>;
+    using bareType = std::decay_t<type>;
   };
 
   // Application calls the function
   using appliedType = R;
+
+  template <typename F>
   static inline appliedType apply(F&& f, A&&... args)
   {
     return f(std::forward<A...>(args...));
@@ -40,8 +41,7 @@ template <typename R, typename A1, typename A2>
 struct function_traits<R(A1, A2)>
 {
   // decay the first arg so we can use a universal ref and not incur a copy
-  using A1B = typename std::decay<A1>::type;
-  using F = std::function<R(A1B, A2)>;
+  using A1B = std::decay_t<A1>;
   using returnType = R;
 
   static const size_t arity = 2;
@@ -49,12 +49,14 @@ struct function_traits<R(A1, A2)>
   template <size_t n>
   struct Arg
   {
-    using type = typename std::tuple_element<n, std::tuple<A1, A2>>::type;
-    using bareType = typename std::decay<type>::type;
+    using type = std::tuple_element_t<n, std::tuple<A1, A2>>;
+    using bareType = std::decay_t<type>;
   };
 
   // (Partial) Application binds the first argument
   using appliedType = std::function<R(A2)>;
+
+  template <typename F>
   static inline appliedType apply(F&& f, A1B&& a1)
   {
     // in case a1 is an rvalue ref, we need to capture "by forward" and make it
@@ -72,8 +74,7 @@ template <typename R, typename A1, typename A2, typename... A>
 struct function_traits<R(A1, A2, A...)>
 {
   // see decay note above
-  using A1B = typename std::decay<A1>::type;
-  using F = std::function<R(A1B, A2, A...)>;
+  using A1B = std::decay_t<A1>;
   using returnType = R;
 
   static const size_t arity = 2 + sizeof...(A);
@@ -81,12 +82,14 @@ struct function_traits<R(A1, A2, A...)>
   template <size_t n>
   struct Arg
   {
-    using type = typename std::tuple_element<n, std::tuple<A1, A2, A...>>::type;
-    using bareType = typename std::decay<type>::type;
+    using type = std::tuple_element_t<n, std::tuple<A1, A2, A...>>;
+    using bareType = std::decay_t<type>;
   };
 
   // (Partial) Application binds the first argument
   using appliedType = std::function<R(A2, A...)>;
+
+  template <typename F>
   static inline appliedType apply(F&& f, A1B&& a1)
   {
     // see capture-by-forward note above

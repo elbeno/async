@@ -19,7 +19,7 @@
 template <typename T>
 struct Continuation
 {
-  using type = std::function<void (typename std::decay<T>::type)>;
+  using type = std::function<void (std::decay_t<T>)>;
 };
 
 template <>
@@ -29,7 +29,10 @@ struct Continuation<void>
 };
 
 template <typename T>
-using Async = std::function<void (typename Continuation<T>::type)>;
+using ContinuationT = typename Continuation<T>::type;
+
+template <typename T>
+using Async = std::function<void (ContinuationT<T>)>;
 
 namespace async
 {
@@ -56,6 +59,9 @@ namespace async
     using type = void;
   };
 
+  template <typename T>
+  using FromAsyncT = typename FromAsync<T>::type;
+
   // Lift a value into an async context: just call the continuation with the
   // captured value.
   // a -> m a
@@ -63,7 +69,7 @@ namespace async
   inline Async<A> pure(A&& a)
   {
     return [a1 = std::forward<A>(a)]
-      (typename Continuation<A>::type cont) mutable
+      (ContinuationT<A>&& cont) mutable
     {
       cont(std::move(a1));
     };
@@ -73,16 +79,12 @@ namespace async
   // async a continuation that calls the new continuation with the result of
   // calling the function.
   // (a -> b) -> m a -> m b
-  template <typename F,
-            typename AA = typename Async<
-              typename function_traits<F>::template Arg<0>::bareType>
-            ::type>
+  template <typename F, typename AA,
+            typename A = FromAsyncT<AA>>
   inline Async<typename function_traits<F>::appliedType> fmap(
       F&& f, AA&& aa)
   {
-    using A = typename function_traits<F>::template Arg<0>::bareType;
-    using B = typename function_traits<F>::appliedType;
-    using C = typename Continuation<B>::type;
+    using C = ContinuationT<typename function_traits<F>::appliedType>;
 
     return [f1 = std::forward<F>(f), aa1 = std::forward<AA>(aa)]
       (C&& cont)
@@ -98,20 +100,13 @@ namespace async
   // the other one isn't present, otherwise applies the function and calls the
   // new continuation with the result.
   // m (a -> b) -> m a -> m b
-  template <typename AF,
-            typename AA = typename Async<
-              typename function_traits<
-                typename FromAsync<AF>::type>
-              ::template Arg<0>::bareType>
-            ::type,
-            typename B = typename function_traits<
-              typename FromAsync<AF>::type>
-            ::appliedType>
-  inline Async<B> apply(AF&& af, AA&& aa)
+  template <typename AF, typename AA,
+            typename A = FromAsyncT<AA>,
+            typename F = FromAsyncT<AF>>
+  inline Async<typename function_traits<F>::appliedType> apply(
+      AF&& af, AA&& aa)
   {
-    using A = typename FromAsync<AA>::type;
-    using F = typename FromAsync<AF>::type;
-    using C = typename Continuation<B>::type;
+    using C = ContinuationT<typename function_traits<F>::appliedType>;
 
     struct Data
     {
@@ -160,10 +155,11 @@ namespace async
   // sequence instead for that case.
   // m a -> (a -> m b) - > m b
   template <typename F, typename AA,
-            typename AB = typename function_traits<F>::returnType>
-  inline AB bind(AA&& aa, F&& f)
+            typename A = FromAsyncT<AA>>
+  inline typename function_traits<F>::appliedType bind(
+      AA&& aa, F&& f)
   {
-    using A = typename async::FromAsync<AA>::type;
+    using AB = typename function_traits<F>::appliedType;
     using C = typename function_traits<AB>::template Arg<0>::bareType;
     return [f1 = std::forward<F>(f), aa1 = std::forward<AA>(aa)]
       (C&& cont)
@@ -179,7 +175,7 @@ namespace async
   template <typename F, typename AA, typename A>
   struct sequence
   {
-    using AB = typename function_traits<F>::returnType;
+    using AB = typename function_traits<F>::appliedType;
     inline AB operator()(AA&& aa, F&& f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
@@ -195,7 +191,7 @@ namespace async
   template <typename F, typename AA>
   struct sequence<F, AA, void>
   {
-    using AB = typename function_traits<F>::returnType;
+    using AB = typename function_traits<F>::appliedType;
     inline AB operator()(AA&& aa, F&& f)
     {
       using C = typename function_traits<AB>::template Arg<0>::bareType;
@@ -229,10 +225,13 @@ namespace async
     using type = Void;
   };
 
+  template <typename T>
+  using IgnoreVoidT = typename IgnoreVoid<T>::type;
+
   template <typename AT>
   inline Async<Void> ignore(AT&& at)
   {
-    using C = typename Continuation<Void>::type;
+    using C = ContinuationT<Void>;
     return [at1 = std::forward<AT>(at)]
       (C&& cont)
     {
@@ -241,13 +240,9 @@ namespace async
     };
   }
 
-  template <typename F,
-            typename AA = typename Async<
-              typename function_traits<F>::template Arg<0>::bareType>
-            ::type,
-            typename AB = typename Async<
-              typename function_traits<F>::template Arg<1>::bareType>
-            ::type,
+  // Run two Asyncs concurrently, joining their results with a function.
+  template <typename F, typename AA, typename AB,
+            typename A = FromAsyncT<AA>, typename B = FromAsyncT<AB>,
             typename C = typename function_traits<F>::returnType>
   inline Async<C> concurrently(AA&& aa, AB&& ab, F&& f)
   {
@@ -306,15 +301,15 @@ namespace async
   template <typename T = Void>
   inline Async<T> zero()
   {
-    return [] (typename Continuation<T>::type) {};
+    return [] (ContinuationT<T>) {};
   }
 
   // Race two Asyncs: call the continuation with the result of the first one
   // that completes. Problem: how to cancel the other one, how to clean up in
   // case of ORing with zero.
   template <typename AA, typename AB,
-            typename A = typename FromAsync<AA>::type,
-            typename B = typename FromAsync<AB>::type>
+            typename A = FromAsyncT<AA>,
+            typename B = FromAsyncT<AB>>
   inline Async<Either<A,B>> race(AA&& aa, AB&& ab)
   {
     struct Data
@@ -325,7 +320,7 @@ namespace async
     };
     std::shared_ptr<Data> pData = std::make_shared<Data>();
 
-    using C = typename Continuation<Either<A,B>>::type;
+    using C = ContinuationT<Either<A,B>>;
     return [pData, aa1 = std::forward<AA>(aa), ab1 = std::forward<AB>(ab)]
       (C&& cont)
     {
@@ -397,7 +392,7 @@ namespace async
 // Syntactic sugar: >= is Haskell's >>=, and > is Haskell's >>.
 
 template <typename F, typename AA,
-          typename A = typename async::FromAsync<AA>::type,
+          typename A = async::FromAsyncT<AA>,
           typename AB = typename function_traits<F>::returnType>
 inline AB operator>=(AA&& a, F&& f)
 {
@@ -406,7 +401,7 @@ inline AB operator>=(AA&& a, F&& f)
 }
 
 template <typename F, typename AA,
-          typename A = typename async::FromAsync<AA>::type,
+          typename A = async::FromAsyncT<AA>,
           typename AB = typename function_traits<F>::returnType>
 inline AB operator>(AA&& a, F&& f)
 {
@@ -419,13 +414,13 @@ inline AB operator>(AA&& a, F&& f)
 // pair.
 
 template <typename AA, typename AB,
-          typename A = typename async::IgnoreVoid<typename async::FromAsync<AA>::type>::type,
-          typename B = typename async::IgnoreVoid<typename async::FromAsync<AB>::type>::type>
+          typename A = async::IgnoreVoidT<async::FromAsyncT<AA>>,
+          typename B = async::IgnoreVoidT<async::FromAsyncT<AB>>>
 inline Async<std::pair<A,B>> operator&&(AA&& a, AB&& b)
 {
   using F = decltype(std::make_pair<A,B>);
-  using RA = typename async::FromAsync<AA>::type;
-  using RB = typename async::FromAsync<AB>::type;
+  using RA = async::FromAsyncT<AA>;
+  using RB = async::FromAsyncT<AB>;
   return async::runConcurrently<F,AA,AB,RA,RB>()(
       std::forward<AA>(a), std::forward<AB>(b), std::make_pair<A,B>);
 }
@@ -434,12 +429,12 @@ inline Async<std::pair<A,B>> operator&&(AA&& a, AB&& b)
 // first.
 
 template <typename AA, typename AB,
-          typename A = typename async::IgnoreVoid<typename async::FromAsync<AA>::type>::type,
-          typename B = typename async::IgnoreVoid<typename async::FromAsync<AB>::type>::type>
+          typename A = async::IgnoreVoidT<async::FromAsyncT<AA>>,
+          typename B = async::IgnoreVoidT<async::FromAsyncT<AB>>>
 inline Async<Either<A,B>> operator||(AA&& a, AB&& b)
 {
-  using RA = typename async::FromAsync<AA>::type;
-  using RB = typename async::FromAsync<AB>::type;
+  using RA = async::FromAsyncT<AA>;
+  using RB = async::FromAsyncT<AB>;
   return async::runRace<AA,AB,RA,RB>()(std::forward<AA>(a),
                                        std::forward<AB>(b));
 }
