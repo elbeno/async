@@ -6,7 +6,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <ostream>
 #include <utility>
 
 //------------------------------------------------------------------------------
@@ -206,10 +205,6 @@ namespace async
 
   // For use in zero, pair and Either.
   struct Void {};
-  std::ostream& operator<<(std::ostream& s, const Void&)
-  {
-    return s << "(void)";
-  }
 
   // Convert an Async<void> to an Async<Void>. Useful for using Async<void> with
   // && and || operators.

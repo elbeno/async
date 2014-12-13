@@ -1,8 +1,6 @@
 #pragma once
 
 #include "function_traits.h"
-#include <ostream>
-#include <utility>
 
 //------------------------------------------------------------------------------
 // The either monad
@@ -87,17 +85,7 @@ struct Either
 };
 
 //------------------------------------------------------------------------------
-// normal C++ things: output, equality
-
-template <typename L, typename R>
-std::ostream& operator<<(std::ostream& s, const Either<L, R>& e)
-{
-  if (e.isRight())
-    s << "Right:" << e.m_right;
-  else
-    s << "Left:" << e.m_left;
-  return s;
-}
+// equality
 
 template<typename L, typename R>
 bool operator==(const Either<L, R>& a, const Either<L, R>& b)
