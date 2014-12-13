@@ -11,17 +11,39 @@ struct Either
   using L = Left;
   using R = Right;
 
-  explicit Either(R&& r)
+  explicit Either(R&& r,
+                  std::enable_if_t<
+                    std::is_rvalue_reference<R&&>::value,
+                    void*> = nullptr)
+    noexcept(std::is_nothrow_move_constructible<R>())
     : m_tag(Tag::RIGHT)
-    , m_right(std::forward<R>(r))
+    , m_right(std::move(r))
   {}
 
-  Either(L&& l, bool)
+  explicit Either(const R& r)
+    noexcept(std::is_nothrow_copy_constructible<R>())
+    : m_tag(Tag::RIGHT)
+    , m_right(r)
+  {}
+
+  Either(L&& l, bool,
+         std::enable_if_t<
+           std::is_rvalue_reference<L&&>::value,
+           void*> = nullptr)
+    noexcept(std::is_nothrow_move_constructible<L>())
     : m_tag(Tag::LEFT)
-    , m_left(std::forward<L>(l))
+    , m_left(std::move(l))
+  {}
+
+  Either(const L& l, bool)
+    noexcept(std::is_nothrow_copy_constructible<L>())
+    : m_tag(Tag::LEFT)
+    , m_left(l)
   {}
 
   Either(const Either& other)
+    noexcept(std::is_nothrow_copy_constructible<L>() &&
+             std::is_nothrow_copy_constructible<R>())
     : m_tag(other.m_tag)
   {
     if (other.isRight())
@@ -31,6 +53,8 @@ struct Either
   }
 
   Either(const Either&& other)
+    noexcept(std::is_nothrow_move_constructible<L>() &&
+             std::is_nothrow_move_constructible<R>())
     : m_tag(other.m_tag)
   {
     if (other.isRight())
@@ -40,6 +64,10 @@ struct Either
   }
 
   Either& operator=(const Either& other)
+    noexcept(std::is_nothrow_copy_assignable<L>() &&
+             std::is_nothrow_copy_assignable<R>() &&
+             std::is_nothrow_copy_constructible<L>() &&
+             std::is_nothrow_copy_constructible<R>())
   {
     // if the tags match, a plain copy of the data member
     if (isRight() == other.isRight())
@@ -63,6 +91,37 @@ struct Either
       new (&m_right) R(other.m_right);
     else
       new (&m_left) L(other.m_left);
+    return *this;
+  }
+
+  Either& operator=(Either&& other)
+    noexcept(std::is_nothrow_move_assignable<L>() &&
+             std::is_nothrow_move_assignable<R>() &&
+             std::is_nothrow_move_constructible<L>() &&
+             std::is_nothrow_move_constructible<R>())
+  {
+    // if the tags match, a plain copy of the data member
+    if (isRight() == other.isRight())
+    {
+      if (isRight())
+        m_right = std::move(other.m_right);
+      else
+        m_left = std::move(other.m_left);
+      return *this;
+    }
+
+    // explicit deletion
+    if (isRight())
+      m_right.~R();
+    else
+      m_left.~L();
+
+    // placement new
+    m_tag = other.m_tag;
+    if (isRight())
+      new (&m_right) R(std::move(other.m_right));
+    else
+      new (&m_left) L(std::move(other.m_left));
     return *this;
   }
 

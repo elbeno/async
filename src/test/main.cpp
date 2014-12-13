@@ -340,6 +340,7 @@ struct CopyTest
   static void ExpectCopies(int n)
   {
     assert(s_copyConstructCount <= n);
+    assert(s_assignmentCount <= n);
     Reset();
   }
 };
@@ -572,6 +573,110 @@ void testCopiesOr()
 }
 
 //------------------------------------------------------------------------------
+void testCopiesEither()
+{
+  CopyTest::Reset();
+
+  // move construct right
+  {
+    Either<bool, CopyTest> e{CopyTest()};
+    CopyTest::ExpectCopies(0);
+  }
+
+  // move construct left
+  {
+    Either<CopyTest, bool> e(CopyTest(), true);
+    CopyTest::ExpectCopies(0);
+  }
+
+  // move assign left -> right
+  {
+    Either<bool, CopyTest> e1(true, true);
+    Either<bool, CopyTest> e2{CopyTest()};
+    CopyTest::Reset();
+    e1 = std::move(e2);
+    CopyTest::ExpectCopies(0);
+  }
+
+  // move assign right -> left
+  {
+    Either<CopyTest, bool> e1{true};
+    Either<CopyTest, bool> e2(CopyTest(), true);
+    CopyTest::Reset();
+    e1 = std::move(e2);
+    CopyTest::ExpectCopies(0);
+  }
+
+  // move assign right -> right
+  {
+    Either<bool, CopyTest> e1{CopyTest()};
+    Either<bool, CopyTest> e2{CopyTest()};
+    CopyTest::Reset();
+    e1 = std::move(e2);
+    CopyTest::ExpectCopies(0);
+  }
+
+  // move assign left -> left
+  {
+    Either<CopyTest, bool> e1(CopyTest(), true);
+    Either<CopyTest, bool> e2(CopyTest(), true);
+    CopyTest::Reset();
+    e1 = std::move(e2);
+    CopyTest::ExpectCopies(0);
+  }
+
+  // copy construct right
+  CopyTest c;
+  {
+    Either<bool, CopyTest> e{c};
+    CopyTest::ExpectCopies(1);
+  }
+
+  // copy construct left
+  {
+    Either<CopyTest, bool> e(c, true);
+    CopyTest::ExpectCopies(1);
+  }
+
+  // copy assign left -> right
+  {
+    Either<bool, CopyTest> e1(true, true);
+    Either<bool, CopyTest> e2{CopyTest()};
+    CopyTest::Reset();
+    e1 = e2;
+    CopyTest::ExpectCopies(1);
+  }
+
+  // copy assign right -> left
+  {
+    Either<CopyTest, bool> e1{true};
+    Either<CopyTest, bool> e2(CopyTest(), true);
+    CopyTest::Reset();
+    e1 = e2;
+    CopyTest::ExpectCopies(1);
+  }
+
+  // copy assign right -> right
+  {
+    Either<bool, CopyTest> e1{CopyTest()};
+    Either<bool, CopyTest> e2{CopyTest()};
+    CopyTest::Reset();
+    e1 = e2;
+    CopyTest::ExpectCopies(1);
+  }
+
+  // copy assign left -> left
+  {
+    Either<CopyTest, bool> e1(CopyTest(), true);
+    Either<CopyTest, bool> e2(CopyTest(), true);
+    CopyTest::Reset();
+    e1 = e2;
+    CopyTest::ExpectCopies(1);
+  }
+
+}
+
+//------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
   testFmap();
@@ -587,6 +692,8 @@ int main(int argc, char* argv[])
   testCopiesBind();
   testCopiesAnd();
   testCopiesOr();
+
+  testCopiesEither();
 
   return 0;
 }
