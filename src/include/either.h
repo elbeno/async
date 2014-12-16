@@ -11,36 +11,35 @@ struct Either
   using L = Left;
   using R = Right;
 
-  explicit Either(R&& r,
-                  std::enable_if_t<
-                    std::is_rvalue_reference<R&&>::value,
-                    void*> = nullptr)
-    noexcept(std::is_nothrow_move_constructible<R>())
-    : m_tag(Tag::RIGHT)
-    , m_right(std::move(r))
-  {}
-
+  // copy construct from a right value
   explicit Either(const R& r)
     noexcept(std::is_nothrow_copy_constructible<R>())
     : m_tag(Tag::RIGHT)
     , m_right(r)
   {}
 
-  Either(L&& l, bool,
-         std::enable_if_t<
-           std::is_rvalue_reference<L&&>::value,
-           void*> = nullptr)
-    noexcept(std::is_nothrow_move_constructible<L>())
-    : m_tag(Tag::LEFT)
-    , m_left(std::move(l))
+  // move construct from a right value
+  explicit Either(R&& r)
+    noexcept(std::is_nothrow_move_constructible<R>())
+    : m_tag(Tag::RIGHT)
+    , m_right(std::move(r))
   {}
 
+  // copy construct from a left value
   Either(const L& l, bool)
     noexcept(std::is_nothrow_copy_constructible<L>())
     : m_tag(Tag::LEFT)
     , m_left(l)
   {}
 
+  // move construct from a left value
+  Either(L&& l, bool)
+    noexcept(std::is_nothrow_move_constructible<L>())
+    : m_tag(Tag::LEFT)
+    , m_left(std::move(l))
+  {}
+
+  // copy constructor
   Either(const Either& other)
     noexcept(std::is_nothrow_copy_constructible<L>() &&
              std::is_nothrow_copy_constructible<R>())
@@ -52,6 +51,7 @@ struct Either
       new (&m_left) L(other.m_left);
   }
 
+  // move constructor
   Either(const Either&& other)
     noexcept(std::is_nothrow_move_constructible<L>() &&
              std::is_nothrow_move_constructible<R>())
@@ -63,6 +63,7 @@ struct Either
       new (&m_left) L(std::move(other.m_left));
   }
 
+  // copy assignment
   Either& operator=(const Either& other)
     noexcept(std::is_nothrow_copy_assignable<L>() &&
              std::is_nothrow_copy_assignable<R>() &&
@@ -94,6 +95,7 @@ struct Either
     return *this;
   }
 
+  // move assignment
   Either& operator=(Either&& other)
     noexcept(std::is_nothrow_move_assignable<L>() &&
              std::is_nothrow_move_assignable<R>() &&
@@ -166,7 +168,6 @@ bool operator!=(const Either<L, R>& a, const Either<L, R>& b)
 
 namespace either
 {
-
   template <typename A, typename F>
   inline Either<A, typename function_traits<F>::returnType> fmap(
       const F& f,

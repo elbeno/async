@@ -30,7 +30,7 @@ char FirstChar(string s)
 
 void testFmap()
 {
-  Async<int> i = pure(123);
+  Async<short> i = pure(123);
 
   // identity
   {
@@ -202,6 +202,12 @@ void testSequence()
 //------------------------------------------------------------------------------
 // AND
 
+template <typename T>
+Async<T> AsyncFirst(const std::pair<T,T>& p)
+{
+  return [p] (std::function<void (T)> f) { f(p.first); };
+}
+
 void testAnd()
 {
   // AND two non-voids
@@ -249,10 +255,25 @@ void testAnd()
     auto a = a1 && a2;
     a([] (std::pair<Void,Void>) {});
   }
+
+  // bind result
+  {
+    auto a = (AsyncChar() && AsyncChar()) >= AsyncFirst<char>;
+    char result;
+    a([&result] (char c) { result = c; });
+    assert(result == 'A');
+  }
 }
 
 //------------------------------------------------------------------------------
 // OR
+
+template <typename T>
+Async<T> AsyncEither(const Either<T,T>& e)
+{
+  return [e] (std::function<void (T)> f) { f(e.isRight() ? e.m_right : e.m_left); };
+}
+
 
 void testOr()
 {
@@ -294,6 +315,14 @@ void testOr()
     auto a2 = AsyncVoid();
     auto a = a1 || a2;
     a([] (Either<Void,Void>) {});
+  }
+
+  // bind result
+  {
+    auto a = (AsyncChar() || AsyncChar()) >= AsyncEither<char>;
+    char result;
+    a([&result] (char c) { result = c; });
+    assert(result == 'A');
   }
 }
 

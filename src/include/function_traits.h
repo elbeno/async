@@ -30,7 +30,7 @@ struct function_traits<R(A...)>
   using appliedType = R;
 
   template <typename F>
-  static inline appliedType apply(F&& f, A&&... args)
+  static inline auto apply(F&& f, A&&... args)
   {
     return f(std::forward<A...>(args...));
   }
@@ -57,7 +57,7 @@ struct function_traits<R(A1, A2)>
   using appliedType = std::function<R(A2)>;
 
   template <typename F>
-  static inline appliedType apply(F&& f, A1B&& a1)
+  static inline auto apply(F&& f, A1B&& a1)
   {
     // in case a1 is an rvalue ref, we need to capture "by forward" and make it
     // mutable, to call the function with a move
@@ -90,7 +90,7 @@ struct function_traits<R(A1, A2, A...)>
   using appliedType = std::function<R(A2, A...)>;
 
   template <typename F>
-  static inline appliedType apply(F&& f, A1B&& a1)
+  static inline auto apply(F&& f, A1B&& a1)
   {
     // see capture-by-forward note above
     return [f1 = std::forward<F>(f), a = std::forward<A1B>(a1)]
