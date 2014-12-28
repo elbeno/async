@@ -62,13 +62,6 @@ namespace async
   template <typename T>
   using FromAsyncT = typename FromAsync<T>::type;
 
-  template <typename A, typename B>
-  struct same_or_convertible
-  {
-    static const bool value =
-      std::is_same<A, B>::value || std::is_convertible<A, B>::value;
-  };
-
   // Lift a value into an async context: just call the continuation with the
   // captured value.
   // a -> m a
@@ -93,7 +86,7 @@ namespace async
             // F's first parameter (either the same type, or implicitly
             // convertible)
             std::enable_if_t<
-              same_or_convertible<
+              std::is_convertible<
                 FromAsyncT<AA>,
                 typename function_traits<F>::template Arg<0>::type>::value, int> = 0>
   inline Async<typename function_traits<F>::appliedType> fmap(
@@ -121,7 +114,7 @@ namespace async
             // F's first parameter (either the same type, or implicitly
             // convertible)
             std::enable_if_t<
-              same_or_convertible<
+              std::is_convertible<
                 FromAsyncT<AA>,
                 typename function_traits<FromAsyncT<AF>>::template Arg<0>::type>::value, int> = 0>
   inline Async<typename function_traits<FromAsyncT<AF>>::appliedType> apply(
@@ -182,7 +175,7 @@ namespace async
             // F's first parameter (either the same type, or implicitly
             // convertible)
             std::enable_if_t<
-              same_or_convertible<
+              std::is_convertible<
                 FromAsyncT<AA>,
                 typename function_traits<F>::template Arg<0>::type>::value, int> = 0>
   inline typename function_traits<F>::appliedType bind(
@@ -277,11 +270,11 @@ namespace async
             // F's first parameter (either the same type, or implicitly
             // convertible); ditto for Async<B> and F's second parameter
             std::enable_if_t<
-              same_or_convertible<
+              std::is_convertible<
                 FromAsyncT<AA>,
                 typename function_traits<F>::template Arg<0>::type>::value, int> = 0,
             std::enable_if_t<
-              same_or_convertible<
+              std::is_convertible<
                 FromAsyncT<AB>,
                 typename function_traits<F>::template Arg<1>::type>::value, int> = 0>
   inline auto concurrently(AA&& aa, AB&& ab, F&& f)
@@ -432,7 +425,7 @@ template <typename F, typename AA,
           // F's first parameter (either the same type, or implicitly
           // convertible)
           std::enable_if_t<
-            async::same_or_convertible<
+            std::is_convertible<
               async::FromAsyncT<AA>,
               typename function_traits<F>::template Arg<0>::type>::value, int> = 0>
 inline auto operator>=(AA&& a, F&& f)
