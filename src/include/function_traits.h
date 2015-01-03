@@ -132,3 +132,124 @@ template <typename T>
 struct function_traits<T&>
   : public function_traits<T>
 {};
+
+// Useful for SFINAE on template arguments
+template <typename ...>
+using void_t = void;
+
+// Result of applying a function to some args, if it can be applied
+template <typename Signature, typename = void>
+struct result_of {};
+
+template <typename F, typename... A>
+struct result_of<F(A...), void_t<decltype(std::declval<F>()(std::declval<A>()...))>>
+{
+  using type = decltype(std::declval<F>()(std::declval<A>()...));
+};
+
+template <typename Signature>
+using result_of_t = typename result_of<Signature>::type;
+
+// Generate a list of integer arguments
+template <int...>
+struct indices {};
+
+template <int N, int...S>
+struct indices_for : public indices_for<N-1, N-1, S...> {};
+
+template <int...S>
+struct indices_for<0, S...>
+{
+  using type = indices<S...>;
+};
+
+template <int N>
+using indices_for_t = typename indices_for<N>::type;
+
+// Curried functions
+template <typename F, typename... A>
+struct curried
+{
+private:
+  using Args = std::tuple<A...>;
+
+public:
+  curried(F&& f, Args&& args)
+    : mF(std::forward<F>(f))
+    , mArgs(std::forward<Args>(args))
+  {}
+
+  // partial function application
+  template<typename Arg, typename... Rest>
+  curried<F, A..., Arg> operator()(Arg&& arg, Rest const&..., ...) const&
+  {
+    static_assert(sizeof...(Rest) == 0,
+                  "curried function requires 1 argument");
+    return { mF,
+        std::tuple_cat(mArgs,
+                       std::forward_as_tuple(std::forward<Arg>(arg))) };
+  }
+
+  template<typename Arg, typename... Rest>
+  curried<F, A..., Arg> operator()(Arg&& arg, Rest const&..., ...) &&
+  {
+    static_assert(sizeof...(Rest) == 0,
+                  "curried function requires 1 argument");
+    return { std::move(mF),
+        std::tuple_cat(std::move(mArgs),
+                       std::forward_as_tuple(std::forward<Arg>(arg))) };
+  }
+
+  // regular function application with all args supplied
+  template <typename Arg>
+  result_of_t<F&(A..., Arg)> operator()(Arg&& arg) const&
+  {
+    return invoke(mF, std::tuple_cat(mArgs,
+                                     std::forward_as_tuple(std::forward<Arg>(arg))));
+  }
+
+  template <typename Arg>
+  result_of_t<F&(A..., Arg)> operator()(Arg&& arg) &&
+  {
+    return invoke(std::move(mF),
+                  std::tuple_cat(std::move(mArgs),
+                                 std::forward_as_tuple(std::forward<Arg>(arg))));
+  }
+
+  // support currying nullary functions
+  template <typename Func = F>
+  result_of_t<Func&(A...)> operator()() const&
+  {
+    return invoke(mF, mArgs);
+  }
+
+  template <typename Func = F>
+  result_of_t<Func&(A...)> operator()() &&
+  {
+    return invoke(std::move(mF), std::move(mArgs));
+  }
+
+private:
+  template <typename Func, typename Tuple, int... Indices>
+  static result_of_t<Func(std::tuple_element_t<Indices, Tuple>...)>
+  invoke(Func&& f, Tuple&& t, indices<Indices...>)
+  {
+    return std::forward<Func>(f)(std::get<Indices>(std::forward<Tuple>(t))...);
+  }
+
+  template <typename Func, typename Tuple>
+  static auto invoke(Func&& f, Tuple&& t)
+  {
+    return invoke(std::forward<Func>(f), std::forward<Tuple>(t),
+                  indices_for_t<std::tuple_size<std::decay_t<Tuple>>::value>());
+  }
+
+  F mF;
+  Args mArgs;
+};
+
+template <typename F>
+curried<F> curry(F&& f)
+{
+  return { std::forward<F>(f), {} };
+}

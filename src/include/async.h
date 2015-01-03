@@ -35,13 +35,95 @@ using Async = std::function<void (ContinuationT<T>)>;
 
 namespace async
 {
-
   // FromAsync<T>::type is defined if T is an Async
   template <typename T>
   struct FromAsync
+  {};
+
+  template <typename T>
+  using FromAsyncT = typename FromAsync<T>::type;
+
+  // A lambda object for pure that can deal with its own value category
+  template <typename T>
+  struct PureT
   {
+    PureT(const T& t)
+      : m_t(t)
+    {}
+
+    PureT(T&& t)
+      : m_t(std::move(t))
+    {}
+
+    void operator()(const ContinuationT<T>& cont) const &
+    {
+      cont(m_t);
+    }
+
+    void operator()(const ContinuationT<T>& cont) &&
+    {
+      cont(std::move(m_t));
+    }
+
+    T m_t;
   };
 
+  // A lambda object for fmap that can deal with its own value category
+  template <typename F, typename AA, typename T>
+  struct FmapT
+  {
+    using A = FromAsyncT<AA>;
+    using C = ContinuationT<T>;
+
+    FmapT(const F& f, const AA& aa)
+      : m_f(f), m_aa(aa)
+    {}
+
+    FmapT(const F& f, AA&& aa)
+      : m_f(f), m_aa(std::move(aa))
+    {}
+
+    FmapT(F&& f, const AA& aa)
+      : m_f(std::move(f)), m_aa(aa)
+    {}
+
+    FmapT(F&& f, AA&& aa)
+      : m_f(std::move(f)), m_aa(std::move(aa))
+    {}
+
+    void operator()(C&& cont) const &
+    {
+      m_aa([cont = std::forward<C>(cont), f = m_f] (A&& a) {
+          cont(function_traits<F>::apply(f, std::forward<A>(a)));
+        });
+    }
+
+    void operator()(const C& cont) const &
+    {
+      m_aa([cont, f = m_f] (A&& a) {
+          cont(function_traits<F>::apply(f, std::forward<A>(a)));
+        });
+    }
+
+    void operator()(C&& cont) &&
+    {
+      m_aa([cont = std::forward<C>(cont), f = std::move(m_f)] (A&& a) {
+          cont(function_traits<F>::apply(std::move(f), std::forward<A>(a)));
+        });
+    }
+
+    void operator()(const C& cont) &&
+    {
+      m_aa([cont, f = std::move(m_f)] (A&& a) {
+          cont(function_traits<F>::apply(std::move(f), std::forward<A>(a)));
+        });
+    }
+
+    F m_f;
+    AA m_aa;
+  };
+
+  // Specializations of FromAsync
   template <typename T>
   struct FromAsync<T&> : public FromAsync<T>
   {
@@ -60,27 +142,46 @@ namespace async
   };
 
   template <typename T>
-  using FromAsyncT = typename FromAsync<T>::type;
+  struct FromAsync<PureT<T>>
+  {
+    using type = T;
+  };
+
+  template <typename F, typename AA, typename T>
+  struct FromAsync<FmapT<F, AA, T>>
+  {
+    using type = T;
+  };
 
   // Lift a value into an async context: just call the continuation with the
   // captured value.
   // a -> m a
   template <typename A>
-  inline Async<A> pure(A&& a)
+  inline PureT<std::decay_t<A>> pure(A&& a)
   {
-    return [a1 = std::forward<A>(a)]
-      (ContinuationT<A>&& cont) mutable
-    {
-      // Problem: how do we know whether or not the lambda itself is an rvalue
-      // (i.e. whether we can safely move the capture)?
-      cont(std::move(a1));
-    };
+    return PureT<std::decay_t<A>>(std::forward<A>(a));
   }
 
   // Fmap a function into an async context: the new async will pass the existing
   // async a continuation that calls the new continuation with the result of
   // calling the function.
   // (a -> b) -> m a -> m b
+  /*
+  template <typename F, typename AA,
+            // constraint: whatever's inside the Async<A> must be admissible as
+            // F's first parameter (either the same type, or implicitly
+            // convertible)
+            std::enable_if_t<
+              std::is_convertible<
+                FromAsyncT<AA>,
+                typename function_traits<F>::template Arg<0>::type>::value, int> = 0>
+  inline FmapT<std::decay_t<F>, std::decay_t<AA>, typename function_traits<F>::appliedType> fmap(
+      F&& f, AA&& aa)
+  {
+    using T = typename function_traits<F>::appliedType;
+    return FmapT<std::decay_t<F>, std::decay_t<AA>, T>(std::forward<F>(f), std::forward<AA>(aa));
+  }
+  */
   template <typename F, typename AA,
             // constraint: whatever's inside the Async<A> must be admissible as
             // F's first parameter (either the same type, or implicitly
